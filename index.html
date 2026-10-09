@@ -1,1 +1,853 @@
-platformzero.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mong Kok Station - First Person FPS</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="blocker">
+        <div id="instructions">
+            <div style="font-size:34px; font-weight: 800; color: #ff3333; letter-spacing: 2px; margin-bottom: 6px;">MONG KOK FPS</div>
+            <div style="font-size:13px; color: #aaa; margin-bottom: 22px;">100x100m Underground MTR Station</div>
+            
+            <div style="font-size:18px; font-weight:600; color:#fff; margin-bottom: 20px; background: #e61c1c; padding: 10px 20px; border-radius: 8px; display:inline-block;">CLICK TO ENTER GAME</div>
+            
+            <div style="font-size:13px; line-height: 2.1; color: #ccc;">
+                <span class="key">W</span> <span class="key">A</span> <span class="key">S</span> <span class="key">D</span> to Move<br/>
+                <span class="key">LEFT CLICK</span> to Fire Pistol<br/>
+                <span class="key">SHIFT</span> to Run &nbsp;|&nbsp; <span class="key">SPACE</span> to Jump<br/>
+                <span class="key">MOUSE</span> to Look Around
+            </div>
+        </div>
+    </div>
+    
+    <div id="crosshair"></div>
+    <div id="ui-container">Mong Kok MTR • 9mm Pistol Armed</div>
+    <div id="ammo-display">9mm | ∞</div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
+
+    <script>
+        let scene, camera, renderer, controls;
+        
+        // Player Motion state
+        let moveForward = false;
+        let moveBackward = false;
+        let moveLeft = false;
+        let moveRight = false;
+        let canJump = false;
+        let isRunning = false;
+
+        const velocity = new THREE.Vector3();
+        let prevTime = performance.now();
+
+        // Gameplay Physics Constants
+        const WALK_SPEED = 7.5;
+        const RUN_SPEED = 14.5;
+        const GRAVITY = 28.0;
+        const JUMP_VELOCITY = Math.sqrt(2 * GRAVITY * 0.8); // 0.8m height jump
+        const PLAYER_HEIGHT = 1.6;
+        const PLAYER_RADIUS = 0.45;
+
+        // Scene Objects & Colliders
+        const colliders = [];
+        const interactableMeshes = [];
+
+        // Weapon System & Animation Parameters
+        let weaponGroup;
+        let muzzleFlashGroup;
+        let muzzleLight;
+        let muzzleFlashTimer = 0;
+        let bobTimer = 0;
+
+        // Camera relative positioning for weapon matching reference image angle
+        const weaponBasePosition = new THREE.Vector3(0.18, -0.22, -0.38);
+        const recoilOffset = new THREE.Vector3(0, 0, 0);
+        let recoilRotation = 0;
+
+        // Dynamic FX Systems
+        const particles = [];
+        const bulletMarks = [];
+        let audioCtx = null;
+
+        function createTerrazzoTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#d6c0a7';
+            ctx.fillRect(0, 0, 512, 512);
+
+            const colors = ['#3a2618', '#1c120a', '#784c2d', '#ebd8c5', '#a6876c', '#8c2d1d', '#523421'];
+            for (let i = 0; i < 12000; i++) {
+                ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                const size = Math.random() * 3 + 1;
+                ctx.fillRect(x, y, size, size);
+            }
+
+            // Grid tile seams
+            ctx.strokeStyle = 'rgba(110, 90, 70, 0.3)';
+            ctx.lineWidth = 3;
+            for(let p = 0; p <= 512; p += 128) {
+                ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, 512); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(512, p); ctx.stroke();
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(25, 25); 
+            tex.magFilter = THREE.LinearFilter; 
+            return tex;
+        }
+
+        function createSlattedCeilingTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#111115';
+            ctx.fillRect(0, 0, 128, 128);
+
+            // Dark louvers / slats
+            for (let y = 0; y < 128; y += 8) {
+                ctx.fillStyle = '#3a3a42';
+                ctx.fillRect(0, y, 128, 5);
+                ctx.fillStyle = '#08080a';
+                ctx.fillRect(0, y + 5, 128, 3);
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(30, 30);
+            return tex;
+        }
+
+        function createMosaicPillarTexture(width, height, hasText) {
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            
+            // Vibrant red base
+            ctx.fillStyle = '#cc1111';
+            ctx.fillRect(0, 0, width, height);
+
+            // Mosaic grid tiles
+            const tileSize = 12;
+            ctx.strokeStyle = '#990000';
+            ctx.lineWidth = 1;
+            
+            ctx.beginPath();
+            for(let x = 0; x <= width; x += tileSize) {
+                ctx.moveTo(x, 0); ctx.lineTo(x, height);
+            }
+            for(let y = 0; y <= height; y += tileSize) {
+                ctx.moveTo(0, y); ctx.lineTo(width, y);
+            }
+            ctx.stroke();
+
+            // Random slight mosaic tile color variations
+            for (let x = 0; x < width; x += tileSize) {
+                for (let y = 0; y < height; y += tileSize) {
+                    if (Math.random() > 0.55) {
+                        ctx.fillStyle = Math.random() > 0.5 ? '#e62222' : '#b30909';
+                        ctx.fillRect(x + 1, y + 1, tileSize - 2, tileSize - 2);
+                    }
+                }
+            }
+
+            // Dark base trim at bottom
+            ctx.fillStyle = '#111115';
+            ctx.fillRect(0, height - (height * 0.08), width, height * 0.08);
+
+            // Station Signage Text (Chinese + English)
+            if (hasText) {
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                // Drop shadow
+                ctx.fillStyle = '#000000';
+                const off = 3;
+                ctx.font = 'bold 54px "Noto Sans CJK TC", "Microsoft JhengHei", sans-serif';
+                ctx.fillText('旺角', width / 2 + off, height * 0.25 + off);
+                ctx.font = 'bold 32px Arial, sans-serif';
+                ctx.fillText('Mong Kok', width / 2 + off, height * 0.36 + off);
+
+                // Pure White Text
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 54px "Noto Sans CJK TC", "Microsoft JhengHei", sans-serif';
+                ctx.fillText('旺角', width / 2, height * 0.25);
+                ctx.font = 'bold 32px Arial, sans-serif';
+                ctx.fillText('Mong Kok', width / 2, height * 0.36);
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.minFilter = THREE.LinearMipmapLinearFilter;
+            return tex;
+        }
+
+        function createScreenDoorTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#1c2026';
+            ctx.fillRect(0, 0, 256, 256);
+
+            // Glass door panels
+            ctx.fillStyle = '#2d3748';
+            ctx.fillRect(10, 16, 110, 224);
+            ctx.fillRect(136, 16, 110, 224);
+
+            // Metallic frames
+            ctx.strokeStyle = '#64748b';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(10, 16, 110, 224);
+            ctx.strokeRect(136, 16, 110, 224);
+
+            // Warning stripe
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(10, 120, 236, 8);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(16, 1);
+            return tex;
+        }
+
+        function playGunshotSound() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (!AudioContext) return;
+                if (!audioCtx) audioCtx = new AudioContext();
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+
+                // White noise burst for initial gun bang
+                const bufferSize = audioCtx.sampleRate * 0.18;
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+
+                const noise = audioCtx.createBufferSource();
+                noise.buffer = buffer;
+
+                // Lowpass filter envelope
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(1600, audioCtx.currentTime);
+                filter.frequency.exponentialRampToValueAtTime(70, audioCtx.currentTime + 0.18);
+
+                const noiseGain = audioCtx.createGain();
+                noiseGain.gain.setValueAtTime(1.0, audioCtx.currentTime);
+                noiseGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.18);
+
+                // Sub-bass triangle pop
+                const osc = audioCtx.createOscillator();
+                const oscGain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(240, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.12);
+
+                oscGain.gain.setValueAtTime(0.95, audioCtx.currentTime);
+                oscGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+
+                // Connect audio nodes
+                noise.connect(filter);
+                filter.connect(noiseGain);
+                noiseGain.connect(audioCtx.destination);
+
+                osc.connect(oscGain);
+                oscGain.connect(audioCtx.destination);
+
+                noise.start();
+                osc.start();
+                noise.stop(audioCtx.currentTime + 0.18);
+                osc.stop(audioCtx.currentTime + 0.12);
+            } catch(e) {
+                console.warn('Audio error:', e);
+            }
+        }
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color('#08080c');
+            scene.fog = new THREE.FogExp2('#0a0a0f', 0.018);
+
+            camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 120);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            document.body.appendChild(renderer.domElement);
+
+            // FPS Controls
+            controls = new THREE.PointerLockControls(camera, document.body);
+
+            const blocker = document.getElementById('blocker');
+            const instructions = document.getElementById('instructions');
+
+            instructions.addEventListener('click', function () {
+                controls.lock();
+            });
+
+            controls.addEventListener('lock', function () {
+                instructions.style.opacity = '0';
+                setTimeout(() => { blocker.style.display = 'none'; }, 200);
+            });
+
+            controls.addEventListener('unlock', function () {
+                blocker.style.display = 'flex';
+                instructions.style.opacity = '1';
+            });
+
+            scene.add(controls.getObject());
+            controls.getObject().position.set(0, PLAYER_HEIGHT, 10);
+
+            createLevel();
+            create3DHandAndPistol();
+            setupLighting();
+            setupInput();
+
+            window.addEventListener('resize', onWindowResize);
+            
+            animate();
+        }
+
+        function createLevel() {
+            const floorTex = createTerrazzoTexture();
+            const ceilingTex = createSlattedCeilingTexture();
+            const doorTex = createScreenDoorTexture();
+
+            const floorMat = new THREE.MeshLambertMaterial({ map: floorTex, roughness: 0.45 });
+            const ceilingMat = new THREE.MeshLambertMaterial({ map: ceilingTex });
+
+            // Main Station Floor (100x100m)
+            const floor = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            scene.add(floor);
+            interactableMeshes.push(floor);
+
+            // Ceiling with slatted texture
+            const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), ceilingMat);
+            ceiling.rotation.x = Math.PI / 2;
+            ceiling.position.y = 4.2;
+            scene.add(ceiling);
+
+            // Mosaic Pillars
+            const frontTex = createMosaicPillarTexture(256, 512, true);
+            const sideTex = createMosaicPillarTexture(64, 64, false);
+            sideTex.wrapS = THREE.RepeatWrapping;
+            sideTex.wrapT = THREE.RepeatWrapping;
+            sideTex.repeat.set(1, 6); 
+
+            const matFront = new THREE.MeshLambertMaterial({ map: frontTex });
+            const matSide = new THREE.MeshLambertMaterial({ map: sideTex });
+            const matDark = new THREE.MeshLambertMaterial({ color: 0x111115 });
+
+            const pillarMaterials = [matSide, matSide, matDark, matDark, matFront, matFront];
+            const pillarGeo = new THREE.BoxGeometry(2.6, 4.2, 1.2);
+
+            for (let x = -40; x <= 40; x += 16) {
+                for (let z = -40; z <= 40; z += 16) {
+                    const pillar = new THREE.Mesh(pillarGeo, pillarMaterials);
+                    pillar.position.set(x, 2.1, z);
+                    scene.add(pillar);
+                    interactableMeshes.push(pillar);
+
+                    const boundingBox = new THREE.Box3().setFromObject(pillar);
+                    colliders.push(boundingBox);
+                }
+            }
+
+            // Platform Screen Doors & Outer Boundary Walls
+            const wallMat = new THREE.MeshLambertMaterial({ map: doorTex });
+            const backWallMat = new THREE.MeshLambertMaterial({ color: 0x1e2228 });
+
+            // Left Platform Wall
+            const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(100, 4.2), wallMat);
+            leftWall.position.set(-49.5, 2.1, 0);
+            leftWall.rotation.y = Math.PI / 2;
+            scene.add(leftWall);
+            interactableMeshes.push(leftWall);
+            colliders.push(new THREE.Box3().setFromObject(leftWall));
+
+            // Right Platform Wall
+            const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(100, 4.2), wallMat);
+            rightWall.position.set(49.5, 2.1, 0);
+            rightWall.rotation.y = -Math.PI / 2;
+            scene.add(rightWall);
+            interactableMeshes.push(rightWall);
+            colliders.push(new THREE.Box3().setFromObject(rightWall));
+
+            // Front Outer Wall
+            const frontWall = new THREE.Mesh(new THREE.PlaneGeometry(100, 4.2), backWallMat);
+            frontWall.position.set(0, 2.1, -49.5);
+            scene.add(frontWall);
+            interactableMeshes.push(frontWall);
+            colliders.push(new THREE.Box3().setFromObject(frontWall));
+
+            // Back Outer Wall
+            const backWall = new THREE.Mesh(new THREE.PlaneGeometry(100, 4.2), backWallMat);
+            backWall.position.set(0, 2.1, 49.5);
+            backWall.rotation.y = Math.PI;
+            scene.add(backWall);
+            interactableMeshes.push(backWall);
+            colliders.push(new THREE.Box3().setFromObject(backWall));
+        }
+
+        function create3DHandAndPistol() {
+            weaponGroup = new THREE.Group();
+
+            // Materials
+            const gloveMat = new THREE.MeshLambertMaterial({ color: 0xb58356 }); // Tan leather glove
+            const armMat = new THREE.MeshLambertMaterial({ color: 0x9e6d42 });   // Darker shade/wrist
+            const gunMetalMat = new THREE.MeshLambertMaterial({ color: 0x24282e }); // Dark metallic steel
+            const slideMat = new THREE.MeshLambertMaterial({ color: 0x16181c });    // Slide steel
+            const sightMat = new THREE.MeshLambertMaterial({ color: 0x3d444d });    // Sights highlight
+            const gripMat = new THREE.MeshLambertMaterial({ color: 0x111315 });     // Textured dark grip
+
+            // 1. FOREARM & WRIST (Extending from bottom-right diagonally)
+            const forearmGeo = new THREE.CylinderGeometry(0.045, 0.055, 0.32, 10);
+            forearmGeo.rotateX(Math.PI / 2);
+            const forearm = new THREE.Mesh(forearmGeo, armMat);
+            forearm.position.set(0.06, -0.12, 0.20);
+            forearm.rotation.y = -Math.PI / 10;
+            forearm.rotation.x = -Math.PI / 12;
+            weaponGroup.add(forearm);
+
+            // 2. GLOVED HAND & KNUCKLES
+            const handPalm = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.085), gloveMat);
+            handPalm.position.set(0.01, -0.015, 0.045);
+            handPalm.rotation.y = -Math.PI / 18;
+            weaponGroup.add(handPalm);
+
+            // Knuckles and fingers wrapped around grip
+            for (let i = 0; i < 4; i++) {
+                const finger = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.022, 0.065), gloveMat);
+                finger.position.set(-0.022, -0.04 + (i * 0.018), 0.02 - (i * 0.005));
+                finger.rotation.y = Math.PI / 6;
+                weaponGroup.add(finger);
+            }
+
+            // Gloved Thumb
+            const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.045, 0.025), gloveMat);
+            thumb.position.set(0.03, 0.01, 0.04);
+            thumb.rotation.z = -Math.PI / 6;
+            weaponGroup.add(thumb);
+
+            // 3. PISTOL FRAME & GRIP
+            const grip = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.125, 0.06), gripMat);
+            grip.position.set(0, -0.02, 0.025);
+            grip.rotation.x = -Math.PI / 6;
+            weaponGroup.add(grip);
+
+            // Trigger Guard
+            const guard = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.035, 0.045), gunMetalMat);
+            guard.position.set(0, -0.01, -0.02);
+            weaponGroup.add(guard);
+
+            // Lower Frame
+            const frame = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.038, 0.22), gunMetalMat);
+            frame.position.set(0, 0.035, -0.05);
+            weaponGroup.add(frame);
+
+            // Serrated Upper Slide
+            const slide = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.048, 0.23), slideMat);
+            slide.position.set(0, 0.072, -0.055);
+            weaponGroup.add(slide);
+
+            // Slide Serrations (Rear of slide)
+            for (let s = -0.01; s <= 0.03; s += 0.008) {
+                const serration = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.03, 0.003), gunMetalMat);
+                serration.position.set(0, 0.072, s);
+                weaponGroup.add(serration);
+            }
+
+            // Barrel Notch & Sights
+            const rearSight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.012, 0.012), sightMat);
+            rearSight.position.set(0, 0.10, 0.045);
+            weaponGroup.add(rearSight);
+
+            const frontSight = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.012, 0.01), sightMat);
+            frontSight.position.set(0, 0.10, -0.16);
+            weaponGroup.add(frontSight);
+
+            // Hammer
+            const hammer = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.02, 0.02), gunMetalMat);
+            hammer.position.set(0, 0.068, 0.06);
+            hammer.rotation.x = -Math.PI / 4;
+            weaponGroup.add(hammer);
+
+            // 4. MULTI-SPIKED STARBURST MUZZLE FLASH
+            muzzleFlashGroup = new THREE.Group();
+            
+            const flashMat = new THREE.MeshBasicMaterial({ color: 0xffbb22, transparent: true, opacity: 0.95 });
+            const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+            // Core flame
+            const core = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), coreMat);
+            muzzleFlashGroup.add(core);
+
+            // Starburst spikes
+            for (let i = 0; i < 8; i++) {
+                const spikeGeo = new THREE.ConeGeometry(0.035, 0.18, 5);
+                spikeGeo.rotateX(-Math.PI / 2);
+                const spike = new THREE.Mesh(spikeGeo, flashMat);
+                spike.rotation.z = (i * Math.PI) / 4;
+                muzzleFlashGroup.add(spike);
+            }
+
+            muzzleFlashGroup.position.set(0, 0.075, -0.18);
+            muzzleFlashGroup.visible = false;
+            weaponGroup.add(muzzleFlashGroup);
+
+            // Dynamic Point Light for Firing Burst
+            muzzleLight = new THREE.PointLight(0xffaa22, 0, 8);
+            muzzleLight.position.set(0, 0.075, -0.19);
+            weaponGroup.add(muzzleLight);
+
+            // Position and Angle to match the reference image (angled inward towards crosshair)
+            weaponGroup.position.copy(weaponBasePosition);
+            
+            // Inward angle (~15-20 deg pointing up-left towards crosshair center)
+            weaponGroup.rotation.set(0.08, -Math.PI / 14, 0.06);
+
+            camera.add(weaponGroup);
+        }
+
+        function setupLighting() {
+            scene.add(new THREE.AmbientLight(0xfff2e6, 0.68));
+
+            // Central Recessed Light Strip Trough
+            const tubeGeo = new THREE.BoxGeometry(100, 0.08, 0.35);
+            const tubeMat = new THREE.MeshBasicMaterial({ color: 0xfffcf5 });
+
+            for (let x = -40; x <= 40; x += 16) { 
+                const lightStrip = new THREE.Mesh(tubeGeo, tubeMat);
+                lightStrip.position.set(x, 4.12, 0);
+                lightStrip.rotation.y = Math.PI / 2;
+                scene.add(lightStrip);
+            }
+
+            // Warm station lighting
+            for (let x = -32; x <= 32; x += 32) {
+                for (let z = -32; z <= 32; z += 32) {
+                    const pl = new THREE.PointLight(0xffecd8, 0.4, 38);
+                    pl.position.set(x, 3.8, z);
+                    scene.add(pl);
+                }
+            }
+        }
+
+        function setupInput() {
+            const onKeyDown = function (event) {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW': moveForward = true; break;
+                    case 'ArrowLeft':
+                    case 'KeyA': moveLeft = true; break;
+                    case 'ArrowDown':
+                    case 'KeyS': moveBackward = true; break;
+                    case 'ArrowRight':
+                    case 'KeyD': moveRight = true; break;
+                    case 'ShiftLeft':
+                    case 'ShiftRight': isRunning = true; break;
+                    case 'Space':
+                        if (canJump) {
+                            velocity.y += JUMP_VELOCITY;
+                            canJump = false;
+                        }
+                        break;
+                }
+            };
+
+            const onKeyUp = function (event) {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW': moveForward = false; break;
+                    case 'ArrowLeft':
+                    case 'KeyA': moveLeft = false; break;
+                    case 'ArrowDown':
+                    case 'KeyS': moveBackward = false; break;
+                    case 'ArrowRight':
+                    case 'KeyD': moveRight = false; break;
+                    case 'ShiftLeft':
+                    case 'ShiftRight': isRunning = false; break;
+                }
+            };
+
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+
+            // Left Mouse Click triggers weapon firing
+            document.addEventListener('mousedown', function (event) {
+                if (controls.isLocked && event.button === 0) {
+                    shootPistol();
+                }
+            });
+        }
+
+        function shootPistol() {
+            playGunshotSound();
+
+            // Trigger Recoil Physics
+            recoilRotation += 0.22;
+            recoilOffset.z += 0.075;
+            recoilOffset.y += 0.015;
+
+            // Trigger Visual Muzzle Starburst
+            muzzleFlashGroup.visible = true;
+            muzzleFlashGroup.rotation.z = Math.random() * Math.PI;
+            muzzleLight.intensity = 4.5;
+            muzzleFlashTimer = 0.05; // 50ms flash
+
+            // Spawn Muzzle Smoke
+            spawnMuzzleSmoke();
+
+            // Raycast for pistol impact
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+            const intersects = raycaster.intersectObjects(interactableMeshes);
+
+            if (intersects.length > 0) {
+                const hit = intersects[0];
+                spawnImpactSparks(hit.point, hit.face.normal);
+                spawnBulletDecal(hit.point, hit.face.normal);
+            }
+        }
+
+        function spawnMuzzleSmoke() {
+            const muzzleWorldPos = new THREE.Vector3();
+            muzzleFlashGroup.getWorldPosition(muzzleWorldPos);
+
+            for (let i = 0; i < 5; i++) {
+                const smokeGeo = new THREE.SphereGeometry(0.02 + Math.random() * 0.02, 6, 6);
+                const smokeMat = new THREE.MeshBasicMaterial({
+                    color: 0xd0d0d0,
+                    transparent: true,
+                    opacity: 0.65
+                });
+                const p = new THREE.Mesh(smokeGeo, smokeMat);
+                p.position.copy(muzzleWorldPos);
+
+                const dir = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.2,
+                    Math.random() * 0.25 + 0.1,
+                    (Math.random() - 0.5) * 0.2
+                );
+
+                particles.push({
+                    mesh: p,
+                    velocity: dir,
+                    life: 0.45 + Math.random() * 0.2,
+                    maxLife: 0.65,
+                    type: 'smoke'
+                });
+                scene.add(p);
+            }
+        }
+
+        function spawnImpactSparks(position, normal) {
+            for (let i = 0; i < 9; i++) {
+                const sparkGeo = new THREE.BoxGeometry(0.015, 0.015, 0.015);
+                const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffd044 });
+                const spark = new THREE.Mesh(sparkGeo, sparkMat);
+                spark.position.copy(position);
+
+                const reflect = normal.clone().add(new THREE.Vector3(
+                    (Math.random() - 0.5) * 1.3,
+                    (Math.random() - 0.5) * 1.3,
+                    (Math.random() - 0.5) * 1.3
+                )).normalize().multiplyScalar(4.5 + Math.random() * 4);
+
+                particles.push({
+                    mesh: spark,
+                    velocity: reflect,
+                    life: 0.2 + Math.random() * 0.15,
+                    maxLife: 0.35,
+                    type: 'spark'
+                });
+                scene.add(spark);
+            }
+        }
+
+        function spawnBulletDecal(position, normal) {
+            const decalGeo = new THREE.PlaneGeometry(0.08, 0.08);
+            const decalMat = new THREE.MeshBasicMaterial({
+                color: 0x111111,
+                side: THREE.DoubleSide,
+                polygonOffset: true,
+                polygonOffsetFactor: -1
+            });
+            const decal = new THREE.Mesh(decalGeo, decalMat);
+            decal.position.copy(position).add(normal.clone().multiplyScalar(0.005));
+            decal.lookAt(position.clone().add(normal));
+
+            scene.add(decal);
+            bulletMarks.push(decal);
+
+            if (bulletMarks.length > 40) {
+                const old = bulletMarks.shift();
+                scene.remove(old);
+            }
+        }
+
+        function checkCollisions(proposedPosition) {
+            const playerBox = new THREE.Box3().setFromCenterAndSize(
+                new THREE.Vector3(proposedPosition.x, proposedPosition.y - (PLAYER_HEIGHT / 2), proposedPosition.z),
+                new THREE.Vector3(PLAYER_RADIUS * 2, PLAYER_HEIGHT, PLAYER_RADIUS * 2)
+            );
+
+            for (let i = 0; i < colliders.length; i++) {
+                if (playerBox.intersectsBox(colliders[i])) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = performance.now();
+
+            if (controls.isLocked) {
+                const delta = Math.min((time - prevTime) / 1000, 0.1);
+
+                // Handle Muzzle Flash Timer
+                if (muzzleFlashTimer > 0) {
+                    muzzleFlashTimer -= delta;
+                    if (muzzleFlashTimer <= 0) {
+                        muzzleFlashGroup.visible = false;
+                        muzzleLight.intensity = 0;
+                    }
+                }
+
+                // Calculate WASD direction vectors relative to current camera heading
+                const forward = new THREE.Vector3();
+                camera.getWorldDirection(forward);
+                forward.y = 0;
+                forward.normalize();
+
+                const right = new THREE.Vector3();
+                right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+                const moveDir = new THREE.Vector3(0, 0, 0);
+
+                if (moveForward) moveDir.add(forward);
+                if (moveBackward) moveDir.sub(forward);
+                if (moveRight) moveDir.add(right);
+                if (moveLeft) moveDir.sub(right);
+
+                if (moveDir.lengthSq() > 0) {
+                    moveDir.normalize();
+                }
+
+                const targetSpeed = (moveForward || moveBackward || moveLeft || moveRight) ? (isRunning ? RUN_SPEED : WALK_SPEED) : 0;
+
+                const accel = 14.0;
+                velocity.x += (moveDir.x * targetSpeed - velocity.x) * Math.min(delta * accel, 1.0);
+                velocity.z += (moveDir.z * targetSpeed - velocity.z) * Math.min(delta * accel, 1.0);
+
+                velocity.y -= GRAVITY * delta;
+
+                const camPos = controls.getObject().position;
+
+                // Collision detection sliding
+                camPos.x += velocity.x * delta;
+                if (checkCollisions(camPos)) {
+                    camPos.x -= velocity.x * delta;
+                    velocity.x = 0;
+                }
+
+                camPos.z += velocity.z * delta;
+                if (checkCollisions(camPos)) {
+                    camPos.z -= velocity.z * delta;
+                    velocity.z = 0;
+                }
+
+                // Y-Axis Jump / Gravity physics
+                camPos.y += velocity.y * delta;
+                if (camPos.y < PLAYER_HEIGHT) {
+                    velocity.y = 0;
+                    camPos.y = PLAYER_HEIGHT;
+                    canJump = true;
+                }
+
+                // Weapon Sway & Walking Bobbing
+                const speed = Math.sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+                if (speed > 0.5 && canJump) {
+                    const bobSpeed = isRunning ? 16 : 10;
+                    const bobAmountScale = isRunning ? 1.3 : 1.0;
+                    bobTimer += delta * bobSpeed;
+
+                    weaponGroup.position.y = weaponBasePosition.y + Math.abs(Math.sin(bobTimer)) * 0.016 * bobAmountScale - recoilOffset.y;
+                    weaponGroup.position.x = weaponBasePosition.x + Math.cos(bobTimer) * 0.012 * bobAmountScale;
+                } else {
+                    bobTimer = 0;
+                    weaponGroup.position.x = THREE.MathUtils.lerp(weaponGroup.position.x, weaponBasePosition.x, delta * 8);
+                    weaponGroup.position.y = THREE.MathUtils.lerp(weaponGroup.position.y, weaponBasePosition.y - recoilOffset.y, delta * 8);
+                }
+
+                // Smoothly recover from weapon recoil
+                recoilRotation *= (1 - delta * 12);
+                recoilOffset.z *= (1 - delta * 10);
+                recoilOffset.y *= (1 - delta * 10);
+
+                weaponGroup.position.z = weaponBasePosition.z + recoilOffset.z;
+                weaponGroup.rotation.x = 0.08 + recoilRotation;
+
+                // Update Active Particles
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.life -= delta;
+
+                    if (p.life <= 0) {
+                        scene.remove(p.mesh);
+                        particles.splice(i, 1);
+                        continue;
+                    }
+
+                    p.mesh.position.addScaledVector(p.velocity, delta);
+
+                    if (p.type === 'smoke') {
+                        const opacity = (p.life / p.maxLife) * 0.6;
+                        p.mesh.material.opacity = opacity;
+                        p.mesh.scale.addScalar(delta * 1.5);
+                    } else if (p.type === 'spark') {
+                        p.velocity.y -= GRAVITY * 0.5 * delta;
+                    }
+                }
+            }
+
+            prevTime = time;
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>

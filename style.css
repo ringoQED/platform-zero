@@ -1,0 +1,99 @@
+* {
+    box-sizing: border-box;
+    user-select: none;
+}
+body, html {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #000;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+#ui-container {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10, 10, 15, 0.8);
+    padding: 10px 24px;
+    border-radius: 30px;
+    color: #e2e8f0;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    pointer-events: none;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    text-align: center;
+    z-index: 10;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+#blocker {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(5, 5, 10, 0.75);
+    backdrop-filter: blur(6px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+    color: white;
+    text-align: center;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+}
+#instructions {
+    background: rgba(15, 15, 20, 0.92);
+    padding: 36px 48px;
+    border-radius: 16px;
+    border: 2px solid #e61c1c;
+    box-shadow: 0 0 40px rgba(230, 28, 28, 0.35);
+    max-width: 460px;
+    width: 90%;
+}
+.key {
+    background: #2a2a35;
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid #444455;
+    font-family: monospace;
+    font-weight: bold;
+    color: #ff4d4d;
+    margin: 0 2px;
+    display: inline-block;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+#crosshair {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 16px;
+    height: 16px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 15;
+}
+#crosshair::before, #crosshair::after {
+    content: '';
+    position: absolute;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 0 4px rgba(0,0,0,0.8);
+}
+#crosshair::before { top: 7px; left: 0; width: 16px; height: 2px; border-radius: 1px; }
+#crosshair::after { top: 0; left: 7px; width: 2px; height: 16px; border-radius: 1px; }
+
+#ammo-display {
+    position: absolute;
+    bottom: 24px;
+    right: 32px;
+    color: #ff4d4d;
+    font-family: monospace;
+    font-size: 26px;
+    font-weight: bold;
+    text-shadow: 0 0 10px rgba(255, 77, 77, 0.6);
+    pointer-events: none;
+    z-index: 10;
+}
