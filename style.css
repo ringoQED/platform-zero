@@ -33,26 +33,55 @@ body, html {
     position: absolute;
     width: 100%;
     height: 100%;
-    background-color: rgba(5, 5, 10, 0.75);
-    backdrop-filter: blur(6px);
+    background-color: rgba(5, 5, 10, 0.4);
+    backdrop-filter: blur(4px);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     z-index: 20;
-    color: white;
-    text-align: center;
-    cursor: pointer;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.25s ease;
 }
-#instructions {
-    background: rgba(15, 15, 20, 0.92);
-    padding: 36px 48px;
-    border-radius: 16px;
-    border: 2px solid #e61c1c;
-    box-shadow: 0 0 40px rgba(230, 28, 28, 0.35);
-    max-width: 460px;
-    width: 90%;
+#splash-container {
+    position: relative;
+    width: min(92vw, calc(92vh * 1376 / 768));
+    height: min(92vh, calc(92vw * 768 / 1376));
+    aspect-ratio: 1376 / 768;
+    opacity: 0.7;
+    transition: opacity 0.25s ease, transform 0.2s ease;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8), 0 0 35px rgba(230, 28, 28, 0.25);
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: default;
+}
+#splash-image {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: fill;
+    pointer-events: none;
+}
+#enter-button {
+    position: absolute;
+    left: 36.48%;
+    top: 79.69%;
+    width: 26.89%;
+    height: 10.42%;
+    background: transparent;
+    border: 2px solid transparent;
+    cursor: pointer;
+    border-radius: 8px;
+    outline: none;
+    transition: all 0.2s ease;
+}
+#enter-button:hover {
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 0 25px rgba(255, 30, 30, 0.9), inset 0 0 15px rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: scale(1.02);
+}
+#enter-button:active {
+    transform: scale(0.98);
 }
 .key {
     background: #2a2a35;
@@ -96,4 +125,56 @@ body, html {
     text-shadow: 0 0 10px rgba(255, 77, 77, 0.6);
     pointer-events: none;
     z-index: 10;
+}
+
+#health-display {
+    position: absolute;
+    bottom: 24px;
+    left: 32px;
+    color: #4dff4d;
+    font-family: monospace;
+    font-size: 26px;
+    font-weight: bold;
+    text-shadow: 0 0 10px rgba(77, 255, 77, 0.6);
+    pointer-events: none;
+    z-index: 10;
+}
+
+#game-over {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(20, 5, 5, 0.9);
+    padding: 40px;
+    border: 2px solid #ff0000;
+    border-radius: 10px;
+    text-align: center;
+    color: white;
+    z-index: 100;
+    display: none;
+    box-shadow: 0 0 30px rgba(255, 0, 0, 0.5);
+}
+
+#game-over h1 {
+    font-size: 48px;
+    margin: 0 0 20px 0;
+    color: #ff3333;
+    text-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+}
+
+#game-over button {
+    background: #ff3333;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    font-size: 20px;
+    font-weight: bold;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: background 0.2s;
+}
+
+#game-over button:hover {
+    background: #ff6666;
 }

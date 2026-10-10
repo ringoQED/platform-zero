@@ -8,18 +8,9 @@
 </head>
 <body>
     <div id="blocker">
-        <div id="instructions">
-            <div style="font-size:34px; font-weight: 800; color: #ff3333; letter-spacing: 2px; margin-bottom: 6px;">MONG KOK FPS</div>
-            <div style="font-size:13px; color: #aaa; margin-bottom: 22px;">100x100m Underground MTR Station</div>
-            
-            <div style="font-size:18px; font-weight:600; color:#fff; margin-bottom: 20px; background: #e61c1c; padding: 10px 20px; border-radius: 8px; display:inline-block;">CLICK TO ENTER GAME</div>
-            
-            <div style="font-size:13px; line-height: 2.1; color: #ccc;">
-                <span class="key">W</span> <span class="key">A</span> <span class="key">S</span> <span class="key">D</span> to Move<br/>
-                <span class="key">LEFT CLICK</span> to Fire Pistol<br/>
-                <span class="key">SHIFT</span> to Run &nbsp;|&nbsp; <span class="key">SPACE</span> to Jump<br/>
-                <span class="key">MOUSE</span> to Look Around
-            </div>
+        <div id="splash-container">
+            <img id="splash-image" src="image/Splash_screen.jpg" alt="Platform Zero Splash Screen" draggable="false">
+            <button id="enter-button" aria-label="Enter to Fight!"></button>
         </div>
     </div>
     
@@ -325,22 +316,34 @@
             controls = new THREE.PointerLockControls(camera, document.body);
 
             const blocker = document.getElementById('blocker');
-            const instructions = document.getElementById('instructions');
+            const splashContainer = document.getElementById('splash-container');
+            const enterButton = document.getElementById('enter-button');
 
-            instructions.addEventListener('click', function () {
+            function startGame() {
                 window.gameStarted = true;
                 controls.lock();
-            });
+            }
+
+            if (enterButton) {
+                enterButton.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    startGame();
+                });
+            }
+
+            if (splashContainer) {
+                splashContainer.addEventListener('click', startGame);
+            }
 
             controls.addEventListener('lock', function () {
-                instructions.style.opacity = '0';
+                if (splashContainer) splashContainer.style.opacity = '0';
                 setTimeout(() => { blocker.style.display = 'none'; }, 200);
             });
 
             controls.addEventListener('unlock', function () {
                 if (window.isDead) return;
                 blocker.style.display = 'flex';
-                instructions.style.opacity = '1';
+                if (splashContainer) splashContainer.style.opacity = '0.7';
             });
 
             scene.add(controls.getObject());
