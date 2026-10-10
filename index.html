@@ -26,12 +26,34 @@
     <div id="crosshair"></div>
     <div id="ui-container">Mong Kok MTR • 9mm Pistol Armed</div>
     <div id="ammo-display">9mm | ∞</div>
+    <div id="health-display">HP: 100</div>
+    <div id="game-over">
+        <h1>Game Over!</h1>
+        <button onclick="location.reload()">OK</button>
+    </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="enemy.js"></script>
     <script>
         let scene, camera, renderer, controls;
+        window.playerHealth = 100;
+        window.isDead = false;
+        window.gameStarted = false;
+
+        window.damagePlayer = function(amount) {
+            if (window.isDead) return;
+            window.playerHealth -= amount;
+            if (window.playerHealth <= 0) {
+                window.playerHealth = 0;
+                window.isDead = true;
+                controls.unlock();
+                document.getElementById('game-over').style.display = 'block';
+                document.getElementById('blocker').style.display = 'none';
+            }
+            document.getElementById('health-display').textContent = 'HP: ' + window.playerHealth;
+        };
         
         // Player Motion state
         let moveForward = false;
@@ -55,6 +77,7 @@
         // Scene Objects & Colliders
         const colliders = [];
         const interactableMeshes = [];
+        window.interactableMeshes = interactableMeshes;
 
         // Weapon System & Animation Parameters
         let weaponGroup;
@@ -287,6 +310,8 @@
             scene = new THREE.Scene();
             scene.background = new THREE.Color('#08080c');
             scene.fog = new THREE.FogExp2('#0a0a0f', 0.018);
+            
+            initEnemy(scene);
 
             camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 120);
             
@@ -303,6 +328,7 @@
             const instructions = document.getElementById('instructions');
 
             instructions.addEventListener('click', function () {
+                window.gameStarted = true;
                 controls.lock();
             });
 
@@ -312,6 +338,7 @@
             });
 
             controls.addEventListener('unlock', function () {
+                if (window.isDead) return;
                 blocker.style.display = 'flex';
                 instructions.style.opacity = '1';
             });
@@ -348,6 +375,7 @@
             ceiling.rotation.x = Math.PI / 2;
             ceiling.position.y = 4.2;
             scene.add(ceiling);
+            interactableMeshes.push(ceiling);
 
             // Mosaic Pillars
             const frontTex = createMosaicPillarTexture(256, 512, true);
@@ -727,9 +755,15 @@
             requestAnimationFrame(animate);
 
             const time = performance.now();
+            const delta = Math.min((time - prevTime) / 1000, 0.1);
+            
+            updateEnemy(delta, camera);
 
-            if (controls.isLocked) {
-                const delta = Math.min((time - prevTime) / 1000, 0.1);
+            if (window.isDead) {
+                // Death camera animation
+                camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, Math.PI / 2, delta * 3);
+                camera.position.y = THREE.MathUtils.lerp(camera.position.y, 0.2, delta * 5);
+            } else if (controls.isLocked) {
 
                 // Handle Muzzle Flash Timer
                 if (muzzleFlashTimer > 0) {
