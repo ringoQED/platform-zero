@@ -17,7 +17,7 @@ class SingleEnemy {
         }
 
         // Laser setup
-        this.laserCooldown = Math.random() * 0.8; // Slight initial stagger
+        this.laserCooldown = Math.random() * 5.0; // Slight initial stagger, previous value 0.8
         this.laserActiveTime = 0;
         this.hasDamagedThisShot = false;
         this.raycaster = new THREE.Raycaster();
@@ -714,7 +714,7 @@ class SingleEnemy {
 
                 // If close enough (within 30m) and laser cooldown ready
                 if (distToPlayer <= 30 && this.laserCooldown <= 0) {
-                    this.laserCooldown = 1.5;
+                    this.laserCooldown = 3.0; // previous value = 1.5
                     this.laserActiveTime = 0.3;
                     this.hasDamagedThisShot = false;
 
