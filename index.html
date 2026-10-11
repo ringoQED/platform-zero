@@ -867,10 +867,14 @@ TELEMETRY: OK
             const raycaster = new THREE.Raycaster();
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
 
-            // Targets include all scene obstacles and enemy (if alive)
+            // Targets include all scene obstacles and alive enemies
             const targets = [...interactableMeshes];
-            if (window.enemyManager && window.enemyManager.crystal && !window.enemyManager.isDead) {
-                targets.push(window.enemyManager.crystal);
+            if (window.enemyManager) {
+                if (typeof window.enemyManager.getEnemyTargets === 'function') {
+                    targets.push(...window.enemyManager.getEnemyTargets());
+                } else if (window.enemyManager.crystal && !window.enemyManager.isDead) {
+                    targets.push(window.enemyManager.crystal);
+                }
             }
 
             const intersects = raycaster.intersectObjects(targets, true);
@@ -885,7 +889,7 @@ TELEMETRY: OK
 
                 // Check if hit enemy crystal
                 if (window.enemyManager && window.enemyManager.isEnemyObject(hit.object)) {
-                    window.enemyManager.takeDamage(50, hit.point);
+                    window.enemyManager.takeDamage(50, hit.point, hit.object);
                     spawnLaserImpactSparks(hit.point, hitNormal || new THREE.Vector3(0, 1, 0));
                 } else {
                     spawnLaserImpactSparks(hit.point, hitNormal || new THREE.Vector3(0, 1, 0));

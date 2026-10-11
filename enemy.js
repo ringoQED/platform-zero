@@ -1,20 +1,27 @@
-class EnemyManager {
-    constructor(scene) {
+class SingleEnemy {
+    constructor(scene, audioCtx, crystal, initialPos, id = 0) {
         this.scene = scene;
-        this.crystal = null;
-        this.loader = new THREE.GLTFLoader();
+        this.audioCtx = audioCtx;
+        this.crystal = crystal;
+        this.id = id;
         this.time = 0;
-        
+
         // Enemy physics & flight parameters
         this.speed = 5.0; // 5m per second
         this.radius = 0.5; // ~1m diameter sphere collider
-        
+
+        // Position crystal
+        if (this.crystal) {
+            this.crystal.position.copy(initialPos);
+            this.scene.add(this.crystal);
+        }
+
         // Laser setup
-        this.laserCooldown = 0;
+        this.laserCooldown = Math.random() * 0.8; // Slight initial stagger
         this.laserActiveTime = 0;
         this.hasDamagedThisShot = false;
         this.raycaster = new THREE.Raycaster();
-        
+
         const material = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.85 });
         // Cylinder geometry with 0.1m radius gives 0.2m (20cm) diameter
         const geometry = new THREE.CylinderGeometry(0.1, 0.1, 1, 8);
@@ -30,7 +37,7 @@ class EnemyManager {
         this.laserImpact = new THREE.Mesh(impactGeo, impactMat);
         this.laserImpact.visible = false;
         this.scene.add(this.laserImpact);
-        
+
         // Enemy Health parameters
         this.health = 100;
         this.maxHealth = 100;
@@ -40,60 +47,26 @@ class EnemyManager {
         this.explosionParticles = [];
         this.explosionFlash = null;
         this.explosionRing = null;
-
-        this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }
-
-    load() {
-        this.loader.load('model/crystal.glb', (gltf) => {
-            this.crystal = gltf.scene;
-            
-            // Adjust the size to approx 1m diameter
-            const box = new THREE.Box3().setFromObject(this.crystal);
-            const size = box.getSize(new THREE.Vector3());
-            const maxDim = Math.max(size.x, size.y, size.z);
-            if (maxDim > 0) {
-                const scale = 1.0 / maxDim;
-                this.crystal.scale.set(scale, scale, scale);
-
-                // Add spherical hitbox in local coordinate space to guarantee responsive raycast hits
-                const hitGeo = new THREE.SphereGeometry(0.65 * maxDim, 12, 12);
-                const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
-                const hitbox = new THREE.Mesh(hitGeo, hitMat);
-                hitbox.name = 'enemyHitbox';
-                this.crystal.add(hitbox);
-            }
-            
-            // Position: 10m from the far back wall (z = -40), 2m above ground
-            this.crystal.position.set(0, 2, -40);
-            
-            this.scene.add(this.crystal);
-
-            if (window.updateEnemyHealthUI) {
-                window.updateEnemyHealthUI(this.health, this.maxHealth);
-            }
-        }, undefined, (error) => {
-            console.error('An error happened loading the crystal enemy:', error);
-        });
     }
 
     playLaserSound() {
+        if (!this.audioCtx) return;
         if (this.audioCtx.state === 'suspended') {
             this.audioCtx.resume();
         }
         const osc = this.audioCtx.createOscillator();
         const gainNode = this.audioCtx.createGain();
-        
+
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(800, this.audioCtx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(100, this.audioCtx.currentTime + 0.3);
-        
+
         gainNode.gain.setValueAtTime(0.5, this.audioCtx.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioCtx.currentTime + 0.3);
-        
+
         osc.connect(gainNode);
         gainNode.connect(this.audioCtx.destination);
-        
+
         osc.start();
         osc.stop(this.audioCtx.currentTime + 0.3);
     }
@@ -131,7 +104,7 @@ class EnemyManager {
 
     // Check if enemy sees player (no pillars or walls between enemy and player)
     canSeePlayer(camera) {
-        if (!this.crystal || !camera) return false;
+        if (!this.crystal || !camera || this.isDead) return false;
 
         const origin = this.crystal.position.clone();
         const target = camera.position.clone();
@@ -155,7 +128,7 @@ class EnemyManager {
     }
 
     checkLaserHit(camera) {
-        if (!this.crystal || !camera) return null;
+        if (!this.crystal || !camera || this.isDead) return null;
 
         const origin = this.crystal.position.clone();
         // Aim at torso level (0.5m below eye height)
@@ -216,7 +189,6 @@ class EnemyManager {
     }
 
     // Check collision with the player first person controller
-    // Cannot pass through player controller body, but can fly over his head!
     checkPlayerCollision(testPos, camera) {
         const PLAYER_RADIUS = 0.45;
         const ENEMY_RADIUS = this.radius;
@@ -227,7 +199,7 @@ class EnemyManager {
             return false;
         }
 
-        // Enemy is at player body height: enforce horizontal cylinder collider
+        // Enforce horizontal cylinder collider
         const dx = testPos.x - camera.position.x;
         const dz = testPos.z - camera.position.z;
         const distXZ = Math.sqrt(dx * dx + dz * dz);
@@ -235,8 +207,21 @@ class EnemyManager {
         return distXZ < minDistXZ;
     }
 
-    // Move enemy with 3D collision resolution against pillars, ceiling, floor, walls, and player
-    moveWithCollision(moveVec, camera) {
+    // Check collision with other alive enemies to avoid overlapping
+    checkOtherEnemiesCollision(testPos, otherEnemies) {
+        if (!otherEnemies) return false;
+        const minDist = this.radius * 2.0; // 1.0m
+        for (const other of otherEnemies) {
+            if (other === this || other.isDead || !other.crystal) continue;
+            if (testPos.distanceTo(other.crystal.position) < minDist) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Move enemy with 3D collision resolution against pillars, ceiling, floor, walls, player, and other enemies
+    moveWithCollision(moveVec, camera, otherEnemies) {
         const ENEMY_RADIUS = this.radius;
         const boxes = this.getPillarBoxes();
         const currentPos = this.crystal.position.clone();
@@ -244,7 +229,6 @@ class EnemyManager {
         // 1. Move along X
         if (moveVec.x !== 0) {
             let testX = currentPos.x + moveVec.x;
-            // Outer station walls at x = ±49.5
             testX = Math.max(-49.0, Math.min(49.0, testX));
             let testPos = new THREE.Vector3(testX, currentPos.y, currentPos.z);
 
@@ -258,6 +242,9 @@ class EnemyManager {
             if (!collidesX && this.checkPlayerCollision(testPos, camera)) {
                 collidesX = true;
             }
+            if (!collidesX && this.checkOtherEnemiesCollision(testPos, otherEnemies)) {
+                collidesX = true;
+            }
             if (!collidesX) {
                 currentPos.x = testX;
             }
@@ -266,7 +253,6 @@ class EnemyManager {
         // 2. Move along Z
         if (moveVec.z !== 0) {
             let testZ = currentPos.z + moveVec.z;
-            // Outer station walls at z = ±49.5
             testZ = Math.max(-49.0, Math.min(49.0, testZ));
             let testPos = new THREE.Vector3(currentPos.x, currentPos.y, testZ);
 
@@ -280,6 +266,9 @@ class EnemyManager {
             if (!collidesZ && this.checkPlayerCollision(testPos, camera)) {
                 collidesZ = true;
             }
+            if (!collidesZ && this.checkOtherEnemiesCollision(testPos, otherEnemies)) {
+                collidesZ = true;
+            }
             if (!collidesZ) {
                 currentPos.z = testZ;
             }
@@ -288,7 +277,6 @@ class EnemyManager {
         // 3. Move along Y
         if (moveVec.y !== 0) {
             let testY = currentPos.y + moveVec.y;
-            // Floor is at y=0, ceiling is at y=4.2m
             testY = Math.max(ENEMY_RADIUS, Math.min(4.2 - ENEMY_RADIUS, testY));
             let testPos = new THREE.Vector3(currentPos.x, testY, currentPos.z);
 
@@ -300,6 +288,9 @@ class EnemyManager {
                 }
             }
             if (!collidesY && this.checkPlayerCollision(testPos, camera)) {
+                collidesY = true;
+            }
+            if (!collidesY && this.checkOtherEnemiesCollision(testPos, otherEnemies)) {
                 collidesY = true;
             }
             if (!collidesY) {
@@ -324,14 +315,10 @@ class EnemyManager {
         if (this.isDead) return;
 
         this.health -= amount;
-        console.log(`Enemy took ${amount} damage. Remaining HP: ${this.health}`);
+        console.log(`Enemy #${this.id} took ${amount} damage. Remaining HP: ${this.health}`);
 
         this.flashHit();
         this.playHurtSound();
-
-        if (window.updateEnemyHealthUI) {
-            window.updateEnemyHealthUI(this.health, this.maxHealth);
-        }
 
         if (this.health <= 0) {
             this.health = 0;
@@ -406,11 +393,6 @@ class EnemyManager {
 
         // Play explosion sound
         this.playExplosionSound();
-
-        // Update UI to 0/100 and vanish HUD bar
-        if (window.updateEnemyHealthUI) {
-            window.updateEnemyHealthUI(0, this.maxHealth);
-        }
     }
 
     spawnExplosion(pos) {
@@ -445,7 +427,6 @@ class EnemyManager {
         };
 
         // 3. Yellowish Fire Particles (60 particles)
-        // Yellowish palette: electric yellow, sun yellow, warm gold, amber
         const fireColors = [0xfff24f, 0xffea00, 0xffd000, 0xffb703, 0xffa000, 0xff8c00];
         for (let i = 0; i < 60; i++) {
             const fireGeo = (i % 2 === 0) 
@@ -500,7 +481,6 @@ class EnemyManager {
         }
 
         // 4. Grey Smoke Particles (45 particles)
-        // Grey palette: shades of soot, ash, and dense grey smoke
         const smokeColors = [0x4a4a4a, 0x606060, 0x787878, 0x909090, 0xa5a5a5, 0x3e3e3e];
         for (let i = 0; i < 45; i++) {
             const smokeGeo = new THREE.SphereGeometry(0.18 + Math.random() * 0.12, 7, 7);
@@ -665,12 +645,10 @@ class EnemyManager {
             const lifeRatio = p.life / p.maxLife;
 
             if (p.type === 'fire') {
-                // Yellowish fire: expands slightly then shrinks and fades
                 const scale = p.baseScale * (0.6 + 0.8 * Math.sin(lifeRatio * Math.PI));
                 p.mesh.scale.set(scale, scale, scale);
                 p.mesh.material.opacity = Math.min(1.0, lifeRatio * 1.6);
             } else if (p.type === 'smoke') {
-                // Grey smoke: billows and expands outwards significantly, fades out smoothly
                 const expandFactor = 1.0 + (1 - lifeRatio) * 3.8;
                 const scale = p.baseScale * expandFactor;
                 p.mesh.scale.set(scale, scale, scale);
@@ -681,8 +659,8 @@ class EnemyManager {
         }
     }
 
-    update(delta, camera) {
-        // Always update explosion effects and particles (yellowish fire and grey smoke)
+    update(delta, camera, otherEnemies) {
+        // Always update explosion effects and particles
         this.updateExplosion(delta);
 
         if (this.isDead || !this.crystal) {
@@ -690,17 +668,15 @@ class EnemyManager {
         }
 
         this.time += delta;
-        // Add a continuous rotation effect
+        // Continuous rotation effect
         this.crystal.rotation.y += delta * 1.5;
-        
+
         if (camera && !window.isDead && window.gameStarted) {
-            // Check if the enemy can see the player (no pillars or walls blocking line of sight)
             const seesPlayer = this.canSeePlayer(camera);
             const distToPlayer = this.crystal.position.distanceTo(camera.position);
 
             if (seesPlayer) {
-                // Enemy chases the player at 5m per second towards player's position
-                // Aim flight towards player's camera position
+                // Chase player at 5m/s towards player's position
                 const target = camera.position.clone();
                 const flyDir = target.sub(this.crystal.position);
                 const flyDist = flyDir.length();
@@ -709,7 +685,7 @@ class EnemyManager {
                     flyDir.normalize();
                     const moveDist = Math.min(this.speed * delta, flyDist);
                     const moveVec = flyDir.multiplyScalar(moveDist);
-                    this.moveWithCollision(moveVec, camera);
+                    this.moveWithCollision(moveVec, camera, otherEnemies);
                 }
 
                 // Laser attack handling when in range and seeing player
@@ -767,6 +743,207 @@ class EnemyManager {
         } else {
             this.laserBeam.visible = false;
             this.laserImpact.visible = false;
+        }
+    }
+}
+
+class EnemyManager {
+    constructor(scene) {
+        this.scene = scene;
+        this.loader = new THREE.GLTFLoader();
+        this.enemies = [];
+        this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    // Deep clone crystal model and give each clone its own material instances so hit flashing is independent
+    cloneCrystalModel(originalCrystal) {
+        const clonedGroup = originalCrystal.clone(true);
+        clonedGroup.traverse((child) => {
+            if (child.isMesh && child.material) {
+                if (Array.isArray(child.material)) {
+                    child.material = child.material.map(m => m.clone());
+                } else {
+                    child.material = child.material.clone();
+                }
+            }
+        });
+        return clonedGroup;
+    }
+
+    // Generate random positions spread across the station away from pillars, player start, and existing enemies
+    getRandomSpawnPosition(existingPositions) {
+        const minPlayerDist = 16.0;
+        const minEnemyDist = 12.0;
+        const ENEMY_RADIUS = 0.5;
+        const playerStart = new THREE.Vector3(0, 1.6, 10);
+        const pillarBoxes = (window.colliders && window.colliders.length > 0) ? window.colliders : [];
+
+        for (let attempts = 0; attempts < 300; attempts++) {
+            // Station bounds: x in [-36, 36], z in [-36, 36]
+            const x = (Math.random() - 0.5) * 72;
+            const z = (Math.random() - 0.5) * 72;
+            const y = 1.8 + Math.random() * 0.6; // between 1.8m and 2.4m
+
+            const candidate = new THREE.Vector3(x, y, z);
+
+            // Avoid player start position
+            if (candidate.distanceTo(playerStart) < minPlayerDist) {
+                continue;
+            }
+
+            // Avoid other enemy positions
+            let tooClose = false;
+            for (const pos of existingPositions) {
+                if (candidate.distanceTo(pos) < minEnemyDist) {
+                    tooClose = true;
+                    break;
+                }
+            }
+            if (tooClose) continue;
+
+            // Avoid pillars
+            let collidesPillar = false;
+            for (const box of pillarBoxes) {
+                const cx = Math.max(box.min.x, Math.min(candidate.x, box.max.x));
+                const cy = Math.max(box.min.y, Math.min(candidate.y, box.max.y));
+                const cz = Math.max(box.min.z, Math.min(candidate.z, box.max.z));
+                const distSq = (candidate.x - cx) ** 2 + (candidate.y - cy) ** 2 + (candidate.z - cz) ** 2;
+                if (distSq < (ENEMY_RADIUS + 0.9) ** 2) {
+                    collidesPillar = true;
+                    break;
+                }
+            }
+            if (collidesPillar) continue;
+
+            return candidate;
+        }
+
+        // Guaranteed fallback positions in open station corridors
+        const fallbacks = [
+            new THREE.Vector3(-24, 2.0, -16),
+            new THREE.Vector3(24, 2.0, -16),
+            new THREE.Vector3(-16, 2.0, 24),
+            new THREE.Vector3(16, 2.0, 24),
+            new THREE.Vector3(0, 2.0, 32)
+        ];
+        for (const fb of fallbacks) {
+            if (!existingPositions.some(p => p.distanceTo(fb) < 6.0)) {
+                return fb;
+            }
+        }
+        return new THREE.Vector3(-20, 2.0, -20);
+    }
+
+    load() {
+        this.loader.load('model/crystal.glb', (gltf) => {
+            const baseCrystal = gltf.scene;
+
+            // Adjust size to approx 1m diameter
+            const box = new THREE.Box3().setFromObject(baseCrystal);
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z);
+            if (maxDim > 0) {
+                const scale = 1.0 / maxDim;
+                baseCrystal.scale.set(scale, scale, scale);
+
+                // Add spherical hitbox in local coordinate space to guarantee responsive raycast hits
+                const hitGeo = new THREE.SphereGeometry(0.65 * maxDim, 12, 12);
+                const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+                const hitbox = new THREE.Mesh(hitGeo, hitMat);
+                hitbox.name = 'enemyHitbox';
+                baseCrystal.add(hitbox);
+            }
+
+            // 1. Original enemy at (0, 2, -40)
+            const origPos = new THREE.Vector3(0, 2, -40);
+            const origEnemy = new SingleEnemy(this.scene, this.audioCtx, baseCrystal, origPos, 1);
+            this.enemies.push(origEnemy);
+
+            const spawnedPositions = [origPos];
+
+            // 2 & 3. Clone 2 more enemies from the original one placed at random positions
+            for (let i = 0; i < 2; i++) {
+                const clonedCrystal = this.cloneCrystalModel(baseCrystal);
+                const randomPos = this.getRandomSpawnPosition(spawnedPositions);
+                spawnedPositions.push(randomPos);
+
+                const clonedEnemy = new SingleEnemy(this.scene, this.audioCtx, clonedCrystal, randomPos, i + 2);
+                this.enemies.push(clonedEnemy);
+                console.log(`Cloned Enemy #${i + 2} spawned at (${randomPos.x.toFixed(1)}, ${randomPos.y.toFixed(1)}, ${randomPos.z.toFixed(1)})`);
+            }
+
+            if (window.updateEnemyHealthUI) {
+                window.updateEnemyHealthUI(100, 100);
+            }
+        }, undefined, (error) => {
+            console.error('An error happened loading the crystal enemy:', error);
+        });
+    }
+
+    // Get all alive enemy crystal roots for raycasting
+    getEnemyTargets() {
+        return this.enemies
+            .filter(e => !e.isDead && e.crystal)
+            .map(e => e.crystal);
+    }
+
+    // Check if an object belongs to any enemy
+    isEnemyObject(object) {
+        return this.enemies.some(e => e.isEnemyObject(object));
+    }
+
+    // Find the specific enemy that owns the hit object
+    getHitEnemy(object) {
+        return this.enemies.find(e => e.isEnemyObject(object)) || null;
+    }
+
+    // Backward compatibility getters
+    get crystal() {
+        const alive = this.enemies.find(e => !e.isDead);
+        return alive ? alive.crystal : (this.enemies[0] ? this.enemies[0].crystal : null);
+    }
+
+    get isDead() {
+        return this.enemies.length > 0 && this.enemies.every(e => e.isDead);
+    }
+
+    get health() {
+        const alive = this.enemies.find(e => !e.isDead);
+        return alive ? alive.health : 0;
+    }
+
+    get maxHealth() {
+        return 100;
+    }
+
+    // Take damage backward compatibility
+    takeDamage(amount, hitPoint, hitObject) {
+        if (hitObject) {
+            const hitEnemy = this.getHitEnemy(hitObject);
+            if (hitEnemy) {
+                hitEnemy.takeDamage(amount, hitPoint);
+                return;
+            }
+        }
+        // Fallback: apply to closest alive enemy to hitPoint, or first alive
+        let targetEnemy = null;
+        let minDist = Infinity;
+        for (const enemy of this.enemies) {
+            if (enemy.isDead || !enemy.crystal) continue;
+            const d = enemy.crystal.position.distanceTo(hitPoint);
+            if (d < minDist) {
+                minDist = d;
+                targetEnemy = enemy;
+            }
+        }
+        if (targetEnemy) {
+            targetEnemy.takeDamage(amount, hitPoint);
+        }
+    }
+
+    update(delta, camera) {
+        for (const enemy of this.enemies) {
+            enemy.update(delta, camera, this.enemies);
         }
     }
 }
