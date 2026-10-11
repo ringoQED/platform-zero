@@ -532,6 +532,26 @@ TELEMETRY: OK
             }
         }
 
+        let bgMusic = null;
+
+        function initBgMusic() {
+            if (!bgMusic) {
+                bgMusic = new Audio('sound/bgd_music.mp3');
+                bgMusic.loop = true;
+                bgMusic.volume = 0.8; // Balanced volume so laser and human sounds remain clearly heard
+                bgMusic.preload = 'auto';
+            }
+        }
+
+        function playBgMusic() {
+            initBgMusic();
+            if (bgMusic && bgMusic.paused) {
+                bgMusic.play().catch(e => {
+                    console.warn('Background music play error:', e);
+                });
+            }
+        }
+
         function playManDieSound() {
             try {
                 const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -588,6 +608,7 @@ TELEMETRY: OK
                 if (audioCtx.state === 'suspended') {
                     audioCtx.resume();
                 }
+                playBgMusic();
                 controls.lock();
             }
 
@@ -619,6 +640,7 @@ TELEMETRY: OK
             createLevel();
             initGunSound();
             initPlayerSounds();
+            initBgMusic();
             loadRifleModel();
             setupLighting();
             setupInput();
