@@ -5,6 +5,10 @@ class EnemyManager {
         this.loader = new THREE.GLTFLoader();
         this.time = 0;
         
+        // Enemy physics & flight parameters
+        this.speed = 5.0; // 5m per second
+        this.radius = 0.5; // ~1m diameter sphere collider
+        
         // Laser setup
         this.laserCooldown = 0;
         this.laserActiveTime = 0;
@@ -89,6 +93,46 @@ class EnemyManager {
         return obstacles;
     }
 
+    getPillarBoxes() {
+        if (window.colliders && window.colliders.length > 0) {
+            return window.colliders;
+        }
+        const boxes = [];
+        if (window.interactableMeshes) {
+            for (const m of window.interactableMeshes) {
+                if (m.geometry && m.geometry.type === 'BoxGeometry') {
+                    boxes.push(new THREE.Box3().setFromObject(m));
+                }
+            }
+        }
+        return boxes;
+    }
+
+    // Check if enemy sees player (no pillars or walls between enemy and player)
+    canSeePlayer(camera) {
+        if (!this.crystal || !camera) return false;
+
+        const origin = this.crystal.position.clone();
+        const target = camera.position.clone();
+        const distToPlayer = origin.distanceTo(target);
+        if (distToPlayer < 0.1) return true;
+
+        const dir = target.clone().sub(origin).normalize();
+        this.raycaster.set(origin, dir);
+        this.raycaster.near = 0.1;
+        this.raycaster.far = distToPlayer;
+
+        const obstacles = this.getObstacles();
+        const intersects = this.raycaster.intersectObjects(obstacles, false);
+
+        // If any pillar or wall is in between, the enemy cannot see the player
+        if (intersects.length > 0 && intersects[0].distance < distToPlayer - 0.2) {
+            return false;
+        }
+
+        return true;
+    }
+
     checkLaserHit(camera) {
         if (!this.crystal || !camera) return null;
 
@@ -109,7 +153,6 @@ class EnemyManager {
         let hitDistance = distToPlayer;
         let hitPoint = aimTarget;
 
-        // If an obstacle (wall or pillar) is between the crystal and the player
         if (intersects.length > 0 && intersects[0].distance < distToPlayer - 0.1) {
             isBlocked = true;
             hitDistance = intersects[0].distance;
@@ -129,11 +172,8 @@ class EnemyManager {
     updateLaserVisuals(hitInfo) {
         if (!hitInfo) return;
 
-        // The laser beam originates at the enemy and aims towards the player
         this.laserBeam.position.copy(hitInfo.origin);
         this.laserBeam.lookAt(hitInfo.aimTarget);
-        
-        // If it hits a wall or pillar, scale is limited to hitDistance so it cannot pass through
         this.laserBeam.scale.set(1, 1, hitInfo.hitDistance);
         this.laserBeam.visible = true;
 
@@ -145,34 +185,171 @@ class EnemyManager {
         }
     }
 
+    // Sphere-to-AABB box collision test
+    sphereIntersectsBox(sphereCenter, radius, box) {
+        const cx = Math.max(box.min.x, Math.min(sphereCenter.x, box.max.x));
+        const cy = Math.max(box.min.y, Math.min(sphereCenter.y, box.max.y));
+        const cz = Math.max(box.min.z, Math.min(sphereCenter.z, box.max.z));
+        const distSq = (sphereCenter.x - cx) ** 2 + (sphereCenter.y - cy) ** 2 + (sphereCenter.z - cz) ** 2;
+        return distSq < radius * radius;
+    }
+
+    // Check collision with the player first person controller
+    // Cannot pass through player controller body, but can fly over his head!
+    checkPlayerCollision(testPos, camera) {
+        const PLAYER_RADIUS = 0.45;
+        const ENEMY_RADIUS = this.radius;
+        const minDistXZ = PLAYER_RADIUS + ENEMY_RADIUS; // 0.95m
+        
+        // If bottom of enemy is at or above player's head, it can freely fly over him
+        if (testPos.y - ENEMY_RADIUS >= camera.position.y) {
+            return false;
+        }
+
+        // Enemy is at player body height: enforce horizontal cylinder collider
+        const dx = testPos.x - camera.position.x;
+        const dz = testPos.z - camera.position.z;
+        const distXZ = Math.sqrt(dx * dx + dz * dz);
+
+        return distXZ < minDistXZ;
+    }
+
+    // Move enemy with 3D collision resolution against pillars, ceiling, floor, walls, and player
+    moveWithCollision(moveVec, camera) {
+        const ENEMY_RADIUS = this.radius;
+        const boxes = this.getPillarBoxes();
+        const currentPos = this.crystal.position.clone();
+
+        // 1. Move along X
+        if (moveVec.x !== 0) {
+            let testX = currentPos.x + moveVec.x;
+            // Outer station walls at x = ±49.5
+            testX = Math.max(-49.0, Math.min(49.0, testX));
+            let testPos = new THREE.Vector3(testX, currentPos.y, currentPos.z);
+
+            let collidesX = false;
+            for (const box of boxes) {
+                if (this.sphereIntersectsBox(testPos, ENEMY_RADIUS, box)) {
+                    collidesX = true;
+                    break;
+                }
+            }
+            if (!collidesX && this.checkPlayerCollision(testPos, camera)) {
+                collidesX = true;
+            }
+            if (!collidesX) {
+                currentPos.x = testX;
+            }
+        }
+
+        // 2. Move along Z
+        if (moveVec.z !== 0) {
+            let testZ = currentPos.z + moveVec.z;
+            // Outer station walls at z = ±49.5
+            testZ = Math.max(-49.0, Math.min(49.0, testZ));
+            let testPos = new THREE.Vector3(currentPos.x, currentPos.y, testZ);
+
+            let collidesZ = false;
+            for (const box of boxes) {
+                if (this.sphereIntersectsBox(testPos, ENEMY_RADIUS, box)) {
+                    collidesZ = true;
+                    break;
+                }
+            }
+            if (!collidesZ && this.checkPlayerCollision(testPos, camera)) {
+                collidesZ = true;
+            }
+            if (!collidesZ) {
+                currentPos.z = testZ;
+            }
+        }
+
+        // 3. Move along Y
+        if (moveVec.y !== 0) {
+            let testY = currentPos.y + moveVec.y;
+            // Floor is at y=0, ceiling is at y=4.2m
+            testY = Math.max(ENEMY_RADIUS, Math.min(4.2 - ENEMY_RADIUS, testY));
+            let testPos = new THREE.Vector3(currentPos.x, testY, currentPos.z);
+
+            let collidesY = false;
+            for (const box of boxes) {
+                if (this.sphereIntersectsBox(testPos, ENEMY_RADIUS, box)) {
+                    collidesY = true;
+                    break;
+                }
+            }
+            if (!collidesY && this.checkPlayerCollision(testPos, camera)) {
+                collidesY = true;
+            }
+            if (!collidesY) {
+                currentPos.y = testY;
+            }
+        }
+
+        this.crystal.position.copy(currentPos);
+    }
+
     update(delta, camera) {
         if (this.crystal) {
             this.time += delta;
-            // Add a floating effect
-            this.crystal.position.y = 2 + Math.sin(this.time * 2) * 0.2;
-            // Add a rotation effect
-            this.crystal.rotation.y += delta * 1.0;
+            // Add a continuous rotation effect
+            this.crystal.rotation.y += delta * 1.5;
             
             if (camera && !window.isDead && window.gameStarted) {
-                const dist = this.crystal.position.distanceTo(camera.position);
-                
-                if (this.laserCooldown > 0) {
-                    this.laserCooldown -= delta;
-                }
-                
-                if (this.laserActiveTime > 0) {
-                    this.laserActiveTime -= delta;
-                    if (this.laserActiveTime <= 0) {
-                        this.laserBeam.visible = false;
-                        this.laserImpact.visible = false;
-                    } else {
-                        // Dynamically update laser path and obstacle collision each frame
+                // Check if the enemy can see the player (no pillars or walls blocking line of sight)
+                const seesPlayer = this.canSeePlayer(camera);
+                const distToPlayer = this.crystal.position.distanceTo(camera.position);
+
+                if (seesPlayer) {
+                    // Enemy chases the player at 5m per second towards player's position
+                    // Aim flight towards player's camera position
+                    const target = camera.position.clone();
+                    const flyDir = target.sub(this.crystal.position);
+                    const flyDist = flyDir.length();
+
+                    if (flyDist > 0.05) {
+                        flyDir.normalize();
+                        const moveDist = Math.min(this.speed * delta, flyDist);
+                        const moveVec = flyDir.multiplyScalar(moveDist);
+                        this.moveWithCollision(moveVec, camera);
+                    }
+
+                    // Laser attack handling when in range and seeing player
+                    if (this.laserCooldown > 0) {
+                        this.laserCooldown -= delta;
+                    }
+
+                    if (this.laserActiveTime > 0) {
+                        this.laserActiveTime -= delta;
+                        if (this.laserActiveTime <= 0) {
+                            this.laserBeam.visible = false;
+                            this.laserImpact.visible = false;
+                        } else {
+                            const hitInfo = this.checkLaserHit(camera);
+                            if (hitInfo) {
+                                this.updateLaserVisuals(hitInfo);
+                                if (!this.hasDamagedThisShot && !hitInfo.isBlocked) {
+                                    if (window.damagePlayer) {
+                                        window.damagePlayer(10);
+                                    }
+                                    this.hasDamagedThisShot = true;
+                                }
+                            }
+                        }
+                    }
+
+                    // If close enough (within 30m) and laser cooldown ready
+                    if (distToPlayer <= 30 && this.laserCooldown <= 0) {
+                        this.laserCooldown = 1.5;
+                        this.laserActiveTime = 0.3;
+                        this.hasDamagedThisShot = false;
+
+                        this.playLaserSound();
+
                         const hitInfo = this.checkLaserHit(camera);
                         if (hitInfo) {
                             this.updateLaserVisuals(hitInfo);
-
-                            // If player moves out from behind cover while beam is still active
-                            if (!this.hasDamagedThisShot && !hitInfo.isBlocked) {
+                            if (!hitInfo.isBlocked) {
                                 if (window.damagePlayer) {
                                     window.damagePlayer(10);
                                 }
@@ -180,28 +357,14 @@ class EnemyManager {
                             }
                         }
                     }
-                }
-                
-                // If close enough and cooldown is ready
-                if (dist <= 30 && this.laserCooldown <= 0) {
-                    this.laserCooldown = 1.5; // Takes 1.5 seconds to recharge
-                    this.laserActiveTime = 0.3; // Laser is visible for 0.3 seconds
-                    this.hasDamagedThisShot = false;
+                } else {
+                    // Cannot see player (pillar in between): stop chasing and stop laser
+                    this.laserBeam.visible = false;
+                    this.laserImpact.visible = false;
 
-                    this.playLaserSound();
-                    
-                    const hitInfo = this.checkLaserHit(camera);
-                    if (hitInfo) {
-                        this.updateLaserVisuals(hitInfo);
-
-                        // Only damage the player if the laser was NOT blocked by a wall or pillar
-                        if (!hitInfo.isBlocked) {
-                            if (window.damagePlayer) {
-                                window.damagePlayer(10);
-                            }
-                            this.hasDamagedThisShot = true;
-                        }
-                    }
+                    // Idle floating bob when stationary
+                    this.crystal.position.y += Math.sin(this.time * 2) * 0.002;
+                    this.crystal.position.y = Math.max(this.radius, Math.min(4.2 - this.radius, this.crystal.position.y));
                 }
             } else {
                 this.laserBeam.visible = false;
