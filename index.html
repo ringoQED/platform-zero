@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mong Kok Station - First Person FPS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -14,16 +17,158 @@
         </div>
     </div>
     
-    <div id="crosshair"></div>
-    <div id="ui-container">Mong Kok MTR • Sci-Fi Laser Rifle</div>
-    <div id="ammo-display">LASER | ∞</div>
-    <div id="health-display">HP: 100</div>
-    <div id="enemy-ui-container">
-        <div id="enemy-name">TARGET: ROGUE CRYSTAL</div>
-        <div id="enemy-health-bar">
-            <div id="enemy-health-fill"></div>
+    <!-- Sci-Fi Visor Heads Up Display (HUD) - 75% Scale -->
+    <div id="hud-layer" class="hud-layer">
+        <!-- 1. Top-Left: TIME PASSED Panel -->
+        <div id="hud-time-panel" class="hud-panel">
+            <svg class="hud-panel-svg" viewBox="0 0 250 80" preserveAspectRatio="none">
+                <path d="M 20 2 L 105 2 L 110 5 L 140 5 L 145 2 L 230 2 L 248 20 L 248 60 L 230 78 L 20 78 L 2 60 L 2 20 Z" 
+                      fill="rgba(0, 18, 30, 0.35)" stroke="#00e5ff" stroke-width="2" />
+            </svg>
+            <div class="hud-panel-content hud-time-content">
+                <div class="hud-time-label">TIME PASSED:</div>
+                <div id="hud-time-display">00:00</div>
+            </div>
         </div>
-        <div id="enemy-health-text">HP: 100 / 100</div>
+
+        <!-- 2. Center: Aiming Reticle / Crosshair -->
+        <div id="hud-crosshair-panel">
+            <svg id="hud-crosshair-svg" viewBox="0 0 120 120">
+                <g stroke="#00e5ff" fill="none">
+                    <!-- Outer Left Arc & Ticks -->
+                    <path d="M 34 22 A 44 44 0 0 0 34 98" stroke-width="2.2" />
+                    <line x1="28" y1="22" x2="36" y2="22" stroke-width="2.2" />
+                    <line x1="16" y1="60" x2="26" y2="60" stroke-width="2.2" />
+                    <line x1="28" y1="98" x2="36" y2="98" stroke-width="2.2" />
+
+                    <!-- Outer Right Arc & Ticks -->
+                    <path d="M 86 22 A 44 44 0 0 1 86 98" stroke-width="2.2" />
+                    <line x1="84" y1="22" x2="92" y2="22" stroke-width="2.2" />
+                    <line x1="94" y1="60" x2="104" y2="60" stroke-width="2.2" />
+                    <line x1="84" y1="98" x2="92" y2="98" stroke-width="2.2" />
+
+                    <!-- Inner Segmented Arcs -->
+                    <path d="M 43 33 A 33 33 0 0 0 43 87" stroke-width="1.8" stroke-dasharray="6,4" />
+                    <path d="M 77 33 A 33 33 0 0 1 77 87" stroke-width="1.8" stroke-dasharray="6,4" />
+
+                    <!-- Center Diagonal Ticks -->
+                    <line x1="53" y1="53" x2="46" y2="46" stroke-width="1.8" />
+                    <line x1="67" y1="53" x2="74" y2="46" stroke-width="1.8" />
+                    <line x1="53" y1="67" x2="46" y2="74" stroke-width="1.8" />
+                    <line x1="67" y1="67" x2="74" y2="74" stroke-width="1.8" />
+
+                    <!-- Center Horizontal Ticks -->
+                    <line x1="42" y1="60" x2="48" y2="60" stroke-width="1.5" />
+                    <line x1="72" y1="60" x2="78" y2="60" stroke-width="1.5" />
+
+                    <!-- Center Reticle Dot -->
+                    <rect x="58.5" y="58.5" width="3" height="3" fill="#00e5ff" stroke="none" />
+                </g>
+            </svg>
+        </div>
+
+        <!-- 3. Left Side Holographic Telemetry Feed -->
+        <div id="hud-telemetry-left" class="hud-telemetry">
+            <svg class="hud-panel-svg" viewBox="0 0 135 240" preserveAspectRatio="none">
+                <path d="M 18 2 L 2 2 L 2 238 L 18 238" stroke="#00e5ff" stroke-width="1.5" fill="none" opacity="0.6"/>
+            </svg>
+            <div class="hud-telemetry-text">
+// SYS.DIAGNOSTICS
+STATUS: NOMINAL
+GRID: MTR_MK_L2
+BUFFER: 1024 KB
+BEARING: 042° N
+SYNC: ACTIVE
+FLUX: OPTIMAL
+RAD: 0.002 mSv
+TARGET: ACQUIRED
+RECON: SCANNING...
+SEC_LINK: ONLINE
+            </div>
+        </div>
+
+        <!-- 4. Right Side Holographic Telemetry Feed -->
+        <div id="hud-telemetry-right" class="hud-telemetry">
+            <svg class="hud-panel-svg" viewBox="0 0 135 240" preserveAspectRatio="none">
+                <path d="M 117 2 L 133 2 L 133 238 L 117 238" stroke="#00e5ff" stroke-width="1.5" fill="none" opacity="0.6"/>
+            </svg>
+            <div class="hud-telemetry-text" style="text-align: right;">
+OPTICS // 100% \\
+FREQ: 5.40 GHz
+SIG: 98.4 dBm
+RANGE: 40.0 m
+SHIELD: ENGAGED
+POWER: STABLE
+CORE TEMP: 34°C
+VISOR: POLARIZED
+TELEMETRY: OK
+            </div>
+        </div>
+
+        <!-- 5. Lower-Left: HEALTH Panel -->
+        <div id="hud-health-panel" class="hud-panel">
+            <svg class="hud-panel-svg" viewBox="0 0 320 82" preserveAspectRatio="none">
+                <path d="M 20 2 L 300 2 L 318 20 L 318 62 L 300 80 L 20 80 L 2 62 L 2 20 Z" 
+                      fill="rgba(0, 18, 30, 0.35)" stroke="#00e5ff" stroke-width="2" />
+            </svg>
+            <div class="hud-panel-content hud-health-layout">
+                <!-- Humanoid Soldier Silhouette Icon -->
+                <svg class="hud-soldier-icon" viewBox="0 0 32 60">
+                    <g fill="#ffffff" stroke="#00e5ff" stroke-width="1.2" stroke-linejoin="round">
+                        <path d="M 12 3 C 12 1, 20 1, 20 3 C 22 5, 22 10, 20 12 C 18 13, 14 13, 12 12 C 10 10, 10 5, 12 3 Z" />
+                        <path d="M 12 7 Q 16 9 20 7" stroke="#00e5ff" stroke-width="1.2" fill="none" />
+                        <path d="M 10 15 L 22 15 L 21 27 L 11 27 Z" />
+                        <path d="M 9 15 L 5 18 L 4 28 L 7 28 L 8 20 L 9 18 Z" />
+                        <path d="M 23 15 L 27 18 L 28 28 L 25 28 L 24 20 L 23 18 Z" />
+                        <path d="M 11 28 L 21 28 L 20 31 L 12 31 Z" />
+                        <path d="M 11 32 L 15 32 L 14 44 L 11 44 Z" />
+                        <path d="M 11 45 L 14 45 L 14 55 L 9 55 L 9 52 L 11 50 Z" />
+                        <path d="M 17 32 L 21 32 L 21 44 L 18 44 Z" />
+                        <path d="M 18 45 L 21 45 L 21 50 L 23 52 L 23 55 L 18 55 Z" />
+                    </g>
+                </svg>
+                <div class="hud-health-content">
+                    <div class="hud-health-header">
+                        <span class="hud-health-title">HEALTH</span>
+                        <span id="hud-health-pct">100%</span>
+                    </div>
+                    <div class="hud-health-bar-frame">
+                        <div id="hud-health-bar-fill"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6. Lower-Right: LASER ENERGY Panel -->
+        <div id="hud-energy-panel" class="hud-panel">
+            <svg class="hud-panel-svg" viewBox="0 0 320 82" preserveAspectRatio="none">
+                <path d="M 20 2 L 300 2 L 318 20 L 318 62 L 300 80 L 20 80 L 2 62 L 2 20 Z" 
+                      fill="rgba(0, 18, 30, 0.35)" stroke="#00e5ff" stroke-width="2" />
+            </svg>
+            <div class="hud-panel-content hud-energy-content">
+                <div class="hud-energy-header">
+                    <span class="hud-energy-title">LASER ENERGY: 100%</span>
+                </div>
+                <div class="hud-energy-meter">
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                    <div class="energy-segment"></div>
+                </div>
+                <div class="hud-mission-data">MISSION DATA</div>
+            </div>
+        </div>
     </div>
     <div id="game-over">
         <h1>Game Over!</h1>
@@ -39,29 +184,34 @@
         window.playerHealth = 100;
         window.isDead = false;
         window.gameStarted = false;
+        let gameStartTime = null;
+        let isTimeStopped = false;
 
-        window.updateEnemyHealthUI = function(hp, maxHp) {
-            const fill = document.getElementById('enemy-health-fill');
-            const text = document.getElementById('enemy-health-text');
-            const container = document.getElementById('enemy-ui-container');
-            if (!fill || !text || !container) return;
+        // Enemy HP removed from HUD per instructions
+        window.updateEnemyHealthUI = function() {};
 
-            const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
-            fill.style.width = pct + '%';
-            text.textContent = 'HP: ' + Math.max(0, hp) + ' / ' + maxHp;
-
-            if (hp <= 0) {
-                text.textContent = 'DESTROYED';
-                fill.style.width = '0%';
-                setTimeout(() => {
-                    container.style.opacity = '0';
-                    container.style.transform = 'translateX(-50%) translateY(-10px)';
-                }, 800);
-            } else {
-                container.style.opacity = '1';
-                container.style.transform = 'translateX(-50%) translateY(0)';
+        function stopTimePassedCounter() {
+            if (isTimeStopped) return;
+            isTimeStopped = true;
+            if (gameStartTime) {
+                const elapsedSec = Math.floor((performance.now() - gameStartTime) / 1000);
+                const m = Math.floor(elapsedSec / 60);
+                const s = elapsedSec % 60;
+                const timeStr = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+                const timeEl = document.getElementById('hud-time-display');
+                if (timeEl) {
+                    timeEl.textContent = timeStr;
+                }
             }
-        };
+        }
+
+        function updatePlayerHealthHUD() {
+            const fill = document.getElementById('hud-health-bar-fill');
+            const pct = document.getElementById('hud-health-pct');
+            const hp = Math.max(0, window.playerHealth);
+            if (fill) fill.style.width = hp + '%';
+            if (pct) pct.textContent = hp + '%';
+        }
 
         window.damagePlayer = function(amount) {
             if (window.isDead) return;
@@ -69,11 +219,15 @@
             if (window.playerHealth <= 0) {
                 window.playerHealth = 0;
                 window.isDead = true;
+                stopTimePassedCounter();
+                playManDieSound();
                 controls.unlock();
                 document.getElementById('game-over').style.display = 'block';
                 document.getElementById('blocker').style.display = 'none';
+            } else {
+                playManHurtSound();
             }
-            document.getElementById('health-display').textContent = 'HP: ' + window.playerHealth;
+            updatePlayerHealthHUD();
         };
         
         // Player Motion state
@@ -112,6 +266,8 @@
         let playerLaserCore = null;
         let playerLaserTimer = 0;
         let gunSoundBuffer = null;
+        let manHurtBuffer = null;
+        let manDieBuffer = null;
 
         // Camera relative positioning for sci-fi rifle
         const weaponBasePosition = new THREE.Vector3(0.20, -0.22, -0.38);
@@ -320,6 +476,88 @@
             }
         }
 
+        function initPlayerSounds() {
+            try {
+                fetch('sound/man_hurt.mp3')
+                    .then(res => res.arrayBuffer())
+                    .then(arrayBuffer => {
+                        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                        if (!audioCtx) audioCtx = new AudioCtx();
+                        return audioCtx.decodeAudioData(arrayBuffer);
+                    })
+                    .then(buffer => {
+                        manHurtBuffer = buffer;
+                    })
+                    .catch(e => console.warn('Could not preload man_hurt.mp3:', e));
+
+                fetch('sound/man_die.mp3')
+                    .then(res => res.arrayBuffer())
+                    .then(arrayBuffer => {
+                        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                        if (!audioCtx) audioCtx = new AudioCtx();
+                        return audioCtx.decodeAudioData(arrayBuffer);
+                    })
+                    .then(buffer => {
+                        manDieBuffer = buffer;
+                    })
+                    .catch(e => console.warn('Could not preload man_die.mp3:', e));
+            } catch(e) {
+                console.warn(e);
+            }
+        }
+
+        function playManHurtSound() {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!audioCtx) audioCtx = new AudioCtx();
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+
+                if (manHurtBuffer) {
+                    const source = audioCtx.createBufferSource();
+                    source.buffer = manHurtBuffer;
+                    const gain = audioCtx.createGain();
+                    gain.gain.value = 1.0;
+                    source.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    source.start(0);
+                } else {
+                    const audio = new Audio('sound/man_hurt.mp3');
+                    audio.volume = 1.0;
+                    audio.play().catch(() => {});
+                }
+            } catch(e) {
+                console.warn('Audio error (man_hurt):', e);
+            }
+        }
+
+        function playManDieSound() {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!audioCtx) audioCtx = new AudioCtx();
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+
+                if (manDieBuffer) {
+                    const source = audioCtx.createBufferSource();
+                    source.buffer = manDieBuffer;
+                    const gain = audioCtx.createGain();
+                    gain.gain.value = 1.0;
+                    source.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    source.start(0);
+                } else {
+                    const audio = new Audio('sound/man_die.mp3');
+                    audio.volume = 1.0;
+                    audio.play().catch(() => {});
+                }
+            } catch(e) {
+                console.warn('Audio error (man_die):', e);
+            }
+        }
+
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color('#08080c');
@@ -344,6 +582,12 @@
 
             function startGame() {
                 window.gameStarted = true;
+                if (!gameStartTime) gameStartTime = performance.now();
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!audioCtx) audioCtx = new AudioCtx();
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
                 controls.lock();
             }
 
@@ -374,6 +618,7 @@
 
             createLevel();
             initGunSound();
+            initPlayerSounds();
             loadRifleModel();
             setupLighting();
             setupInput();
@@ -740,6 +985,18 @@
             const delta = Math.min((time - prevTime) / 1000, 0.1);
             
             updateEnemy(delta, camera);
+
+            // Update Time Passed (minutes:seconds since game starts, stops when player dies)
+            if (window.gameStarted && !window.isDead && !isTimeStopped && gameStartTime) {
+                const elapsedSec = Math.floor((time - gameStartTime) / 1000);
+                const m = Math.floor(elapsedSec / 60);
+                const s = elapsedSec % 60;
+                const timeStr = String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+                const timeEl = document.getElementById('hud-time-display');
+                if (timeEl && timeEl.textContent !== timeStr) {
+                    timeEl.textContent = timeStr;
+                }
+            }
 
             if (window.isDead) {
                 // Death camera animation
