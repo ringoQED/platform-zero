@@ -21,6 +21,8 @@ const server = http.createServer((req, res) => {
         '.gif': 'image/gif',
         '.svg': 'image/svg+xml',
         '.wav': 'audio/wav',
+        '.mp3': 'audio/mpeg',
+        '.glb': 'model/gltf-binary',
         '.mp4': 'video/mp4',
         '.woff': 'application/font-woff',
         '.ttf': 'application/font-ttf',

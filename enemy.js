@@ -31,6 +31,16 @@ class EnemyManager {
         this.laserImpact.visible = false;
         this.scene.add(this.laserImpact);
         
+        // Enemy Health parameters
+        this.health = 100;
+        this.maxHealth = 100;
+        this.isDead = false;
+
+        // Explosion effects tracking
+        this.explosionParticles = [];
+        this.explosionFlash = null;
+        this.explosionRing = null;
+
         this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     }
 
@@ -45,12 +55,23 @@ class EnemyManager {
             if (maxDim > 0) {
                 const scale = 1.0 / maxDim;
                 this.crystal.scale.set(scale, scale, scale);
+
+                // Add spherical hitbox in local coordinate space to guarantee responsive raycast hits
+                const hitGeo = new THREE.SphereGeometry(0.65 * maxDim, 12, 12);
+                const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+                const hitbox = new THREE.Mesh(hitGeo, hitMat);
+                hitbox.name = 'enemyHitbox';
+                this.crystal.add(hitbox);
             }
             
             // Position: 10m from the far back wall (z = -40), 2m above ground
             this.crystal.position.set(0, 2, -40);
             
             this.scene.add(this.crystal);
+
+            if (window.updateEnemyHealthUI) {
+                window.updateEnemyHealthUI(this.health, this.maxHealth);
+            }
         }, undefined, (error) => {
             console.error('An error happened loading the crystal enemy:', error);
         });
@@ -289,67 +310,423 @@ class EnemyManager {
         this.crystal.position.copy(currentPos);
     }
 
-    update(delta, camera) {
+    isEnemyObject(object) {
+        if (!this.crystal || this.isDead) return false;
+        let curr = object;
+        while (curr) {
+            if (curr === this.crystal) return true;
+            curr = curr.parent;
+        }
+        return false;
+    }
+
+    takeDamage(amount, hitPoint) {
+        if (this.isDead) return;
+
+        this.health -= amount;
+        console.log(`Enemy took ${amount} damage. Remaining HP: ${this.health}`);
+
+        this.flashHit();
+        this.playHurtSound();
+
+        if (window.updateEnemyHealthUI) {
+            window.updateEnemyHealthUI(this.health, this.maxHealth);
+        }
+
+        if (this.health <= 0) {
+            this.health = 0;
+            this.die();
+        }
+    }
+
+    flashHit() {
+        if (!this.crystal || this.isDead) return;
+        this.crystal.traverse((child) => {
+            if (child.isMesh && child.name !== 'enemyHitbox') {
+                if (child.material) {
+                    if (child.material.emissive && !child.userData.origEmissive) {
+                        child.userData.origEmissive = child.material.emissive.clone();
+                        child.material.emissive.setHex(0xff3333);
+                    }
+                }
+            }
+        });
+        setTimeout(() => {
+            if (this.crystal && !this.isDead) {
+                this.crystal.traverse((child) => {
+                    if (child.isMesh && child.userData && child.userData.origEmissive) {
+                        child.material.emissive.copy(child.userData.origEmissive);
+                        delete child.userData.origEmissive;
+                    }
+                });
+            }
+        }, 120);
+    }
+
+    playHurtSound() {
+        try {
+            if (!this.audioCtx) return;
+            if (this.audioCtx.state === 'suspended') {
+                this.audioCtx.resume();
+            }
+            const osc = this.audioCtx.createOscillator();
+            const gain = this.audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(320, this.audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(70, this.audioCtx.currentTime + 0.15);
+            gain.gain.setValueAtTime(0.4, this.audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, this.audioCtx.currentTime + 0.15);
+            osc.connect(gain);
+            gain.connect(this.audioCtx.destination);
+            osc.start();
+            osc.stop(this.audioCtx.currentTime + 0.15);
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    die() {
+        if (this.isDead) return;
+        this.isDead = true;
+
+        const explosionPos = this.crystal ? this.crystal.position.clone() : new THREE.Vector3(0, 2, -40);
+
+        // Immediately hide and disable enemy laser & impact
+        this.laserBeam.visible = false;
+        this.laserImpact.visible = false;
+
+        // Vanish the enemy crystal model
         if (this.crystal) {
-            this.time += delta;
-            // Add a continuous rotation effect
-            this.crystal.rotation.y += delta * 1.5;
+            this.scene.remove(this.crystal);
+            this.crystal.visible = false;
+        }
+
+        // Spawn yellowish fire and grey smoke explosion
+        this.spawnExplosion(explosionPos);
+
+        // Play explosion sound
+        this.playExplosionSound();
+
+        // Update UI to 0/100 and vanish HUD bar
+        if (window.updateEnemyHealthUI) {
+            window.updateEnemyHealthUI(0, this.maxHealth);
+        }
+    }
+
+    spawnExplosion(pos) {
+        // 1. Dynamic Yellowish Flash Light
+        const flashLight = new THREE.PointLight(0xffdd33, 14, 25);
+        flashLight.position.copy(pos);
+        this.scene.add(flashLight);
+        this.explosionFlash = {
+            light: flashLight,
+            timer: 0.35,
+            maxTimer: 0.35,
+            maxIntensity: 14
+        };
+
+        // 2. Expanding Yellow Shockwave Ring
+        const ringGeo = new THREE.RingGeometry(0.3, 0.6, 32);
+        ringGeo.rotateX(-Math.PI / 2);
+        const ringMat = new THREE.MeshBasicMaterial({
+            color: 0xffea00,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.85,
+            depthWrite: false
+        });
+        const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+        ringMesh.position.copy(pos);
+        this.scene.add(ringMesh);
+        this.explosionRing = {
+            mesh: ringMesh,
+            timer: 0.45,
+            maxTimer: 0.45
+        };
+
+        // 3. Yellowish Fire Particles (60 particles)
+        // Yellowish palette: electric yellow, sun yellow, warm gold, amber
+        const fireColors = [0xfff24f, 0xffea00, 0xffd000, 0xffb703, 0xffa000, 0xff8c00];
+        for (let i = 0; i < 60; i++) {
+            const fireGeo = (i % 2 === 0) 
+                ? new THREE.DodecahedronGeometry(0.12 + Math.random() * 0.12)
+                : new THREE.TetrahedronGeometry(0.14 + Math.random() * 0.14);
+            const color = fireColors[Math.floor(Math.random() * fireColors.length)];
+            const fireMat = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 1.0,
+                depthWrite: false
+            });
+            const mesh = new THREE.Mesh(fireGeo, fireMat);
             
-            if (camera && !window.isDead && window.gameStarted) {
-                // Check if the enemy can see the player (no pillars or walls blocking line of sight)
-                const seesPlayer = this.canSeePlayer(camera);
-                const distToPlayer = this.crystal.position.distanceTo(camera.position);
+            // Spawn around center
+            mesh.position.set(
+                pos.x + (Math.random() - 0.5) * 0.3,
+                pos.y + (Math.random() - 0.5) * 0.3,
+                pos.z + (Math.random() - 0.5) * 0.3
+            );
 
-                if (seesPlayer) {
-                    // Enemy chases the player at 5m per second towards player's position
-                    // Aim flight towards player's camera position
-                    const target = camera.position.clone();
-                    const flyDir = target.sub(this.crystal.position);
-                    const flyDist = flyDir.length();
+            // Explosive spherical burst outward
+            const phi = Math.random() * Math.PI * 2;
+            const costheta = Math.random() * 2 - 1;
+            const theta = Math.acos(costheta);
+            const dir = new THREE.Vector3(
+                Math.sin(theta) * Math.cos(phi),
+                Math.sin(theta) * Math.sin(phi),
+                Math.cos(theta)
+            );
+            const speed = 4.5 + Math.random() * 7.5;
+            const velocity = dir.multiplyScalar(speed);
+            velocity.y += 1.8 + Math.random() * 2.2; // Upward thermal buoyancy
 
-                    if (flyDist > 0.05) {
-                        flyDir.normalize();
-                        const moveDist = Math.min(this.speed * delta, flyDist);
-                        const moveVec = flyDir.multiplyScalar(moveDist);
-                        this.moveWithCollision(moveVec, camera);
-                    }
+            this.scene.add(mesh);
+            const life = 0.55 + Math.random() * 0.35;
+            this.explosionParticles.push({
+                type: 'fire',
+                mesh: mesh,
+                velocity: velocity,
+                buoyancy: 3.5,
+                drag: 2.5,
+                life: life,
+                maxLife: life,
+                baseScale: 1.0,
+                rotSpeed: new THREE.Vector3(
+                    (Math.random() - 0.5) * 12,
+                    (Math.random() - 0.5) * 12,
+                    (Math.random() - 0.5) * 12
+                )
+            });
+        }
 
-                    // Laser attack handling when in range and seeing player
-                    if (this.laserCooldown > 0) {
-                        this.laserCooldown -= delta;
-                    }
+        // 4. Grey Smoke Particles (45 particles)
+        // Grey palette: shades of soot, ash, and dense grey smoke
+        const smokeColors = [0x4a4a4a, 0x606060, 0x787878, 0x909090, 0xa5a5a5, 0x3e3e3e];
+        for (let i = 0; i < 45; i++) {
+            const smokeGeo = new THREE.SphereGeometry(0.18 + Math.random() * 0.12, 7, 7);
+            const color = smokeColors[Math.floor(Math.random() * smokeColors.length)];
+            const smokeMat = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.75,
+                depthWrite: false
+            });
+            const mesh = new THREE.Mesh(smokeGeo, smokeMat);
 
-                    if (this.laserActiveTime > 0) {
-                        this.laserActiveTime -= delta;
-                        if (this.laserActiveTime <= 0) {
-                            this.laserBeam.visible = false;
-                            this.laserImpact.visible = false;
-                        } else {
-                            const hitInfo = this.checkLaserHit(camera);
-                            if (hitInfo) {
-                                this.updateLaserVisuals(hitInfo);
-                                if (!this.hasDamagedThisShot && !hitInfo.isBlocked) {
-                                    if (window.damagePlayer) {
-                                        window.damagePlayer(10);
-                                    }
-                                    this.hasDamagedThisShot = true;
-                                }
-                            }
-                        }
-                    }
+            mesh.position.set(
+                pos.x + (Math.random() - 0.5) * 0.4,
+                pos.y + (Math.random() - 0.5) * 0.4,
+                pos.z + (Math.random() - 0.5) * 0.4
+            );
 
-                    // If close enough (within 30m) and laser cooldown ready
-                    if (distToPlayer <= 30 && this.laserCooldown <= 0) {
-                        this.laserCooldown = 1.5;
-                        this.laserActiveTime = 0.3;
-                        this.hasDamagedThisShot = false;
+            // Smoke drifts outward and rises upwards
+            const dir = new THREE.Vector3(
+                (Math.random() - 0.5) * 2,
+                Math.random() * 1.5,
+                (Math.random() - 0.5) * 2
+            ).normalize();
+            const speed = 1.5 + Math.random() * 3.2;
+            const velocity = dir.multiplyScalar(speed);
+            velocity.y += 1.6 + Math.random() * 1.6;
 
-                        this.playLaserSound();
+            this.scene.add(mesh);
+            const life = 1.4 + Math.random() * 0.8;
+            this.explosionParticles.push({
+                type: 'smoke',
+                mesh: mesh,
+                velocity: velocity,
+                buoyancy: 2.2,
+                drag: 1.8,
+                life: life,
+                maxLife: life,
+                baseScale: 1.0,
+                rotSpeed: new THREE.Vector3(
+                    (Math.random() - 0.5) * 4,
+                    (Math.random() - 0.5) * 4,
+                    (Math.random() - 0.5) * 4
+                )
+            });
+        }
+    }
 
+    playExplosionSound() {
+        try {
+            if (!this.audioCtx) return;
+            if (this.audioCtx.state === 'suspended') {
+                this.audioCtx.resume();
+            }
+            const now = this.audioCtx.currentTime;
+
+            // 1. Noise buffer for explosion blast roar
+            const bufferSize = Math.floor(this.audioCtx.sampleRate * 1.2);
+            const noiseBuffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
+            const output = noiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+
+            const whiteNoise = this.audioCtx.createBufferSource();
+            whiteNoise.buffer = noiseBuffer;
+
+            const noiseFilter = this.audioCtx.createBiquadFilter();
+            noiseFilter.type = 'lowpass';
+            noiseFilter.frequency.setValueAtTime(850, now);
+            noiseFilter.frequency.exponentialRampToValueAtTime(70, now + 1.1);
+
+            const noiseGain = this.audioCtx.createGain();
+            noiseGain.gain.setValueAtTime(0.85, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 1.15);
+
+            whiteNoise.connect(noiseFilter);
+            noiseFilter.connect(noiseGain);
+            noiseGain.connect(this.audioCtx.destination);
+            whiteNoise.start(now);
+            whiteNoise.stop(now + 1.2);
+
+            // 2. Heavy Sub-Bass detonation thump
+            const osc = this.audioCtx.createOscillator();
+            const oscGain = this.audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(28, now + 0.8);
+
+            oscGain.gain.setValueAtTime(0.95, now);
+            oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.85);
+
+            osc.connect(oscGain);
+            oscGain.connect(this.audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.85);
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    updateExplosion(delta) {
+        // Flash light fade
+        if (this.explosionFlash) {
+            this.explosionFlash.timer -= delta;
+            if (this.explosionFlash.timer <= 0) {
+                this.scene.remove(this.explosionFlash.light);
+                this.explosionFlash = null;
+            } else {
+                const ratio = this.explosionFlash.timer / this.explosionFlash.maxTimer;
+                this.explosionFlash.light.intensity = ratio * this.explosionFlash.maxIntensity;
+            }
+        }
+
+        // Ring shockwave
+        if (this.explosionRing) {
+            this.explosionRing.timer -= delta;
+            if (this.explosionRing.timer <= 0) {
+                this.scene.remove(this.explosionRing.mesh);
+                if (this.explosionRing.mesh.geometry && typeof this.explosionRing.mesh.geometry.dispose === 'function') {
+                    this.explosionRing.mesh.geometry.dispose();
+                }
+                if (this.explosionRing.mesh.material && typeof this.explosionRing.mesh.material.dispose === 'function') {
+                    this.explosionRing.mesh.material.dispose();
+                }
+                this.explosionRing = null;
+            } else {
+                const progress = 1 - (this.explosionRing.timer / this.explosionRing.maxTimer);
+                const s = 1 + progress * 14;
+                this.explosionRing.mesh.scale.set(s, s, 1);
+                this.explosionRing.mesh.material.opacity = (1 - progress) * 0.85;
+            }
+        }
+
+        // Explosion Particles (Yellowish Fire and Grey Smoke)
+        for (let i = this.explosionParticles.length - 1; i >= 0; i--) {
+            const p = this.explosionParticles[i];
+            p.life -= delta;
+
+            if (p.life <= 0) {
+                this.scene.remove(p.mesh);
+                if (p.mesh.geometry && typeof p.mesh.geometry.dispose === 'function') {
+                    p.mesh.geometry.dispose();
+                }
+                if (p.mesh.material && typeof p.mesh.material.dispose === 'function') {
+                    p.mesh.material.dispose();
+                }
+                this.explosionParticles.splice(i, 1);
+                continue;
+            }
+
+            p.mesh.position.addScaledVector(p.velocity, delta);
+            p.velocity.multiplyScalar(Math.max(0, 1 - delta * p.drag));
+            p.velocity.y += p.buoyancy * delta;
+
+            if (p.rotSpeed) {
+                p.mesh.rotation.x += p.rotSpeed.x * delta;
+                p.mesh.rotation.y += p.rotSpeed.y * delta;
+                p.mesh.rotation.z += p.rotSpeed.z * delta;
+            }
+
+            const lifeRatio = p.life / p.maxLife;
+
+            if (p.type === 'fire') {
+                // Yellowish fire: expands slightly then shrinks and fades
+                const scale = p.baseScale * (0.6 + 0.8 * Math.sin(lifeRatio * Math.PI));
+                p.mesh.scale.set(scale, scale, scale);
+                p.mesh.material.opacity = Math.min(1.0, lifeRatio * 1.6);
+            } else if (p.type === 'smoke') {
+                // Grey smoke: billows and expands outwards significantly, fades out smoothly
+                const expandFactor = 1.0 + (1 - lifeRatio) * 3.8;
+                const scale = p.baseScale * expandFactor;
+                p.mesh.scale.set(scale, scale, scale);
+                p.mesh.material.opacity = lifeRatio * 0.75;
+                p.velocity.x += (Math.random() - 0.5) * 0.3 * delta;
+                p.velocity.z += (Math.random() - 0.5) * 0.3 * delta;
+            }
+        }
+    }
+
+    update(delta, camera) {
+        // Always update explosion effects and particles (yellowish fire and grey smoke)
+        this.updateExplosion(delta);
+
+        if (this.isDead || !this.crystal) {
+            return;
+        }
+
+        this.time += delta;
+        // Add a continuous rotation effect
+        this.crystal.rotation.y += delta * 1.5;
+        
+        if (camera && !window.isDead && window.gameStarted) {
+            // Check if the enemy can see the player (no pillars or walls blocking line of sight)
+            const seesPlayer = this.canSeePlayer(camera);
+            const distToPlayer = this.crystal.position.distanceTo(camera.position);
+
+            if (seesPlayer) {
+                // Enemy chases the player at 5m per second towards player's position
+                // Aim flight towards player's camera position
+                const target = camera.position.clone();
+                const flyDir = target.sub(this.crystal.position);
+                const flyDist = flyDir.length();
+
+                if (flyDist > 0.05) {
+                    flyDir.normalize();
+                    const moveDist = Math.min(this.speed * delta, flyDist);
+                    const moveVec = flyDir.multiplyScalar(moveDist);
+                    this.moveWithCollision(moveVec, camera);
+                }
+
+                // Laser attack handling when in range and seeing player
+                if (this.laserCooldown > 0) {
+                    this.laserCooldown -= delta;
+                }
+
+                if (this.laserActiveTime > 0) {
+                    this.laserActiveTime -= delta;
+                    if (this.laserActiveTime <= 0) {
+                        this.laserBeam.visible = false;
+                        this.laserImpact.visible = false;
+                    } else {
                         const hitInfo = this.checkLaserHit(camera);
                         if (hitInfo) {
                             this.updateLaserVisuals(hitInfo);
-                            if (!hitInfo.isBlocked) {
+                            if (!this.hasDamagedThisShot && !hitInfo.isBlocked) {
                                 if (window.damagePlayer) {
                                     window.damagePlayer(10);
                                 }
@@ -357,19 +734,39 @@ class EnemyManager {
                             }
                         }
                     }
-                } else {
-                    // Cannot see player (pillar in between): stop chasing and stop laser
-                    this.laserBeam.visible = false;
-                    this.laserImpact.visible = false;
+                }
 
-                    // Idle floating bob when stationary
-                    this.crystal.position.y += Math.sin(this.time * 2) * 0.002;
-                    this.crystal.position.y = Math.max(this.radius, Math.min(4.2 - this.radius, this.crystal.position.y));
+                // If close enough (within 30m) and laser cooldown ready
+                if (distToPlayer <= 30 && this.laserCooldown <= 0) {
+                    this.laserCooldown = 1.5;
+                    this.laserActiveTime = 0.3;
+                    this.hasDamagedThisShot = false;
+
+                    this.playLaserSound();
+
+                    const hitInfo = this.checkLaserHit(camera);
+                    if (hitInfo) {
+                        this.updateLaserVisuals(hitInfo);
+                        if (!hitInfo.isBlocked) {
+                            if (window.damagePlayer) {
+                                window.damagePlayer(10);
+                            }
+                            this.hasDamagedThisShot = true;
+                        }
+                    }
                 }
             } else {
+                // Cannot see player (pillar in between): stop chasing and stop laser
                 this.laserBeam.visible = false;
                 this.laserImpact.visible = false;
+
+                // Idle floating bob when stationary
+                this.crystal.position.y += Math.sin(this.time * 2) * 0.002;
+                this.crystal.position.y = Math.max(this.radius, Math.min(4.2 - this.radius, this.crystal.position.y));
             }
+        } else {
+            this.laserBeam.visible = false;
+            this.laserImpact.visible = false;
         }
     }
 }
@@ -379,6 +776,7 @@ let enemyManager = null;
 function initEnemy(scene) {
     enemyManager = new EnemyManager(scene);
     enemyManager.load();
+    window.enemyManager = enemyManager;
 }
 
 function updateEnemy(delta, camera) {

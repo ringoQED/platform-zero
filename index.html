@@ -15,9 +15,16 @@
     </div>
     
     <div id="crosshair"></div>
-    <div id="ui-container">Mong Kok MTR • 9mm Pistol Armed</div>
-    <div id="ammo-display">9mm | ∞</div>
+    <div id="ui-container">Mong Kok MTR • Sci-Fi Laser Rifle</div>
+    <div id="ammo-display">LASER | ∞</div>
     <div id="health-display">HP: 100</div>
+    <div id="enemy-ui-container">
+        <div id="enemy-name">TARGET: ROGUE CRYSTAL</div>
+        <div id="enemy-health-bar">
+            <div id="enemy-health-fill"></div>
+        </div>
+        <div id="enemy-health-text">HP: 100 / 100</div>
+    </div>
     <div id="game-over">
         <h1>Game Over!</h1>
         <button onclick="location.reload()">OK</button>
@@ -32,6 +39,29 @@
         window.playerHealth = 100;
         window.isDead = false;
         window.gameStarted = false;
+
+        window.updateEnemyHealthUI = function(hp, maxHp) {
+            const fill = document.getElementById('enemy-health-fill');
+            const text = document.getElementById('enemy-health-text');
+            const container = document.getElementById('enemy-ui-container');
+            if (!fill || !text || !container) return;
+
+            const pct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
+            fill.style.width = pct + '%';
+            text.textContent = 'HP: ' + Math.max(0, hp) + ' / ' + maxHp;
+
+            if (hp <= 0) {
+                text.textContent = 'DESTROYED';
+                fill.style.width = '0%';
+                setTimeout(() => {
+                    container.style.opacity = '0';
+                    container.style.transform = 'translateX(-50%) translateY(-10px)';
+                }, 800);
+            } else {
+                container.style.opacity = '1';
+                container.style.transform = 'translateX(-50%) translateY(0)';
+            }
+        };
 
         window.damagePlayer = function(amount) {
             if (window.isDead) return;
@@ -73,13 +103,18 @@
 
         // Weapon System & Animation Parameters
         let weaponGroup;
-        let muzzleFlashGroup;
         let muzzleLight;
         let muzzleFlashTimer = 0;
         let bobTimer = 0;
+        let rifleModel = null;
+        let muzzleMarker = null;
+        let playerLaserBeam = null;
+        let playerLaserCore = null;
+        let playerLaserTimer = 0;
+        let gunSoundBuffer = null;
 
-        // Camera relative positioning for weapon matching reference image angle
-        const weaponBasePosition = new THREE.Vector3(0.18, -0.22, -0.38);
+        // Camera relative positioning for sci-fi rifle
+        const weaponBasePosition = new THREE.Vector3(0.20, -0.22, -0.38);
         const recoilOffset = new THREE.Vector3(0, 0, 0);
         let recoilRotation = 0;
 
@@ -241,58 +276,45 @@
             return tex;
         }
 
+        function initGunSound() {
+            try {
+                fetch('sound/gun_sound.mp3')
+                    .then(res => res.arrayBuffer())
+                    .then(arrayBuffer => {
+                        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                        if (!audioCtx) audioCtx = new AudioCtx();
+                        return audioCtx.decodeAudioData(arrayBuffer);
+                    })
+                    .then(buffer => {
+                        gunSoundBuffer = buffer;
+                    })
+                    .catch(e => console.warn('Could not preload gun_sound.mp3:', e));
+            } catch(e) {
+                console.warn(e);
+            }
+        }
+
         function playGunshotSound() {
             try {
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                if (!AudioContext) return;
-                if (!audioCtx) audioCtx = new AudioContext();
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!audioCtx) audioCtx = new AudioCtx();
                 if (audioCtx.state === 'suspended') {
                     audioCtx.resume();
                 }
 
-                // White noise burst for initial gun bang
-                const bufferSize = audioCtx.sampleRate * 0.18;
-                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-                const data = buffer.getChannelData(0);
-                for (let i = 0; i < bufferSize; i++) {
-                    data[i] = Math.random() * 2 - 1;
+                if (gunSoundBuffer) {
+                    const source = audioCtx.createBufferSource();
+                    source.buffer = gunSoundBuffer;
+                    const gain = audioCtx.createGain();
+                    gain.gain.value = 0.8;
+                    source.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    source.start(0);
+                } else {
+                    const audio = new Audio('sound/gun_sound.mp3');
+                    audio.volume = 0.8;
+                    audio.play().catch(() => {});
                 }
-
-                const noise = audioCtx.createBufferSource();
-                noise.buffer = buffer;
-
-                // Lowpass filter envelope
-                const filter = audioCtx.createBiquadFilter();
-                filter.type = 'lowpass';
-                filter.frequency.setValueAtTime(1600, audioCtx.currentTime);
-                filter.frequency.exponentialRampToValueAtTime(70, audioCtx.currentTime + 0.18);
-
-                const noiseGain = audioCtx.createGain();
-                noiseGain.gain.setValueAtTime(1.0, audioCtx.currentTime);
-                noiseGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.18);
-
-                // Sub-bass triangle pop
-                const osc = audioCtx.createOscillator();
-                const oscGain = audioCtx.createGain();
-                osc.type = 'triangle';
-                osc.frequency.setValueAtTime(240, audioCtx.currentTime);
-                osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.12);
-
-                oscGain.gain.setValueAtTime(0.95, audioCtx.currentTime);
-                oscGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
-
-                // Connect audio nodes
-                noise.connect(filter);
-                filter.connect(noiseGain);
-                noiseGain.connect(audioCtx.destination);
-
-                osc.connect(oscGain);
-                oscGain.connect(audioCtx.destination);
-
-                noise.start();
-                osc.start();
-                noise.stop(audioCtx.currentTime + 0.18);
-                osc.stop(audioCtx.currentTime + 0.12);
             } catch(e) {
                 console.warn('Audio error:', e);
             }
@@ -351,7 +373,8 @@
             controls.getObject().position.set(0, PLAYER_HEIGHT, 10);
 
             createLevel();
-            create3DHandAndPistol();
+            initGunSound();
+            loadRifleModel();
             setupLighting();
             setupInput();
 
@@ -443,124 +466,70 @@
             colliders.push(new THREE.Box3().setFromObject(backWall));
         }
 
-        function create3DHandAndPistol() {
+        function loadRifleModel() {
             weaponGroup = new THREE.Group();
 
-            // Materials
-            const gloveMat = new THREE.MeshLambertMaterial({ color: 0xb58356 }); // Tan leather glove
-            const armMat = new THREE.MeshLambertMaterial({ color: 0x9e6d42 });   // Darker shade/wrist
-            const gunMetalMat = new THREE.MeshLambertMaterial({ color: 0x24282e }); // Dark metallic steel
-            const slideMat = new THREE.MeshLambertMaterial({ color: 0x16181c });    // Slide steel
-            const sightMat = new THREE.MeshLambertMaterial({ color: 0x3d444d });    // Sights highlight
-            const gripMat = new THREE.MeshLambertMaterial({ color: 0x111315 });     // Textured dark grip
+            // Player Blue Laser Beam (20mm diameter: radius = 0.01m)
+            const laserGeo = new THREE.CylinderGeometry(0.01, 0.01, 1, 8);
+            laserGeo.rotateX(Math.PI / 2);
+            laserGeo.translate(0, 0, 0.5); // origin at start of cylinder
+            const laserMat = new THREE.MeshBasicMaterial({ 
+                color: 0x00aaff, 
+                transparent: true, 
+                opacity: 0.92 
+            });
+            playerLaserBeam = new THREE.Mesh(laserGeo, laserMat);
 
-            // 1. FOREARM & WRIST (Extending from bottom-right diagonally)
-            const forearmGeo = new THREE.CylinderGeometry(0.045, 0.055, 0.32, 10);
-            forearmGeo.rotateX(Math.PI / 2);
-            const forearm = new THREE.Mesh(forearmGeo, armMat);
-            forearm.position.set(0.06, -0.12, 0.20);
-            forearm.rotation.y = -Math.PI / 10;
-            forearm.rotation.x = -Math.PI / 12;
-            weaponGroup.add(forearm);
+            // Bright core inside beam for intense sci-fi laser glow
+            const coreGeo = new THREE.CylinderGeometry(0.005, 0.005, 1, 6);
+            coreGeo.rotateX(Math.PI / 2);
+            coreGeo.translate(0, 0, 0.5);
+            const coreMat = new THREE.MeshBasicMaterial({ color: 0xebf8ff });
+            playerLaserCore = new THREE.Mesh(coreGeo, coreMat);
+            playerLaserBeam.add(playerLaserCore);
 
-            // 2. GLOVED HAND & KNUCKLES
-            const handPalm = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 0.085), gloveMat);
-            handPalm.position.set(0.01, -0.015, 0.045);
-            handPalm.rotation.y = -Math.PI / 18;
-            weaponGroup.add(handPalm);
+            playerLaserBeam.visible = false;
+            scene.add(playerLaserBeam);
 
-            // Knuckles and fingers wrapped around grip
-            for (let i = 0; i < 4; i++) {
-                const finger = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.022, 0.065), gloveMat);
-                finger.position.set(-0.022, -0.04 + (i * 0.018), 0.02 - (i * 0.005));
-                finger.rotation.y = Math.PI / 6;
-                weaponGroup.add(finger);
-            }
-
-            // Gloved Thumb
-            const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.045, 0.025), gloveMat);
-            thumb.position.set(0.03, 0.01, 0.04);
-            thumb.rotation.z = -Math.PI / 6;
-            weaponGroup.add(thumb);
-
-            // 3. PISTOL FRAME & GRIP
-            const grip = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.125, 0.06), gripMat);
-            grip.position.set(0, -0.02, 0.025);
-            grip.rotation.x = -Math.PI / 6;
-            weaponGroup.add(grip);
-
-            // Trigger Guard
-            const guard = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.035, 0.045), gunMetalMat);
-            guard.position.set(0, -0.01, -0.02);
-            weaponGroup.add(guard);
-
-            // Lower Frame
-            const frame = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.038, 0.22), gunMetalMat);
-            frame.position.set(0, 0.035, -0.05);
-            weaponGroup.add(frame);
-
-            // Serrated Upper Slide
-            const slide = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.048, 0.23), slideMat);
-            slide.position.set(0, 0.072, -0.055);
-            weaponGroup.add(slide);
-
-            // Slide Serrations (Rear of slide)
-            for (let s = -0.01; s <= 0.03; s += 0.008) {
-                const serration = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.03, 0.003), gunMetalMat);
-                serration.position.set(0, 0.072, s);
-                weaponGroup.add(serration);
-            }
-
-            // Barrel Notch & Sights
-            const rearSight = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.012, 0.012), sightMat);
-            rearSight.position.set(0, 0.10, 0.045);
-            weaponGroup.add(rearSight);
-
-            const frontSight = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.012, 0.01), sightMat);
-            frontSight.position.set(0, 0.10, -0.16);
-            weaponGroup.add(frontSight);
-
-            // Hammer
-            const hammer = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.02, 0.02), gunMetalMat);
-            hammer.position.set(0, 0.068, 0.06);
-            hammer.rotation.x = -Math.PI / 4;
-            weaponGroup.add(hammer);
-
-            // 4. MULTI-SPIKED STARBURST MUZZLE FLASH
-            muzzleFlashGroup = new THREE.Group();
-            
-            const flashMat = new THREE.MeshBasicMaterial({ color: 0xffbb22, transparent: true, opacity: 0.95 });
-            const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-
-            // Core flame
-            const core = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), coreMat);
-            muzzleFlashGroup.add(core);
-
-            // Starburst spikes
-            for (let i = 0; i < 8; i++) {
-                const spikeGeo = new THREE.ConeGeometry(0.035, 0.18, 5);
-                spikeGeo.rotateX(-Math.PI / 2);
-                const spike = new THREE.Mesh(spikeGeo, flashMat);
-                spike.rotation.z = (i * Math.PI) / 4;
-                muzzleFlashGroup.add(spike);
-            }
-
-            muzzleFlashGroup.position.set(0, 0.075, -0.18);
-            muzzleFlashGroup.visible = false;
-            weaponGroup.add(muzzleFlashGroup);
-
-            // Dynamic Point Light for Firing Burst
-            muzzleLight = new THREE.PointLight(0xffaa22, 0, 8);
-            muzzleLight.position.set(0, 0.075, -0.19);
+            // Blue Muzzle Point Light
+            muzzleLight = new THREE.PointLight(0x00bfff, 0, 10);
             weaponGroup.add(muzzleLight);
 
-            // Position and Angle to match the reference image (angled inward towards crosshair)
+            // Muzzle Marker where laser beam originates
+            muzzleMarker = new THREE.Object3D();
+            weaponGroup.add(muzzleMarker);
+
+            // Position and angle for first-person perspective
+            weaponBasePosition.set(0.20, -0.22, -0.38);
             weaponGroup.position.copy(weaponBasePosition);
-            
-            // Inward angle (~15-20 deg pointing up-left towards crosshair center)
-            weaponGroup.rotation.set(0.08, -Math.PI / 14, 0.06);
+            weaponGroup.rotation.set(0.03, -0.04, 0.02);
 
             camera.add(weaponGroup);
+
+            // Load rifle.glb
+            const loader = new THREE.GLTFLoader();
+            loader.load('model/rifle.glb', (gltf) => {
+                rifleModel = gltf.scene;
+
+                // Model length is ~4.1m along Z unscaled. Scale by 0.22 gives ~0.90m length
+                const scale = 0.22;
+                rifleModel.scale.set(scale, scale, scale);
+
+                // Position model inside weaponGroup
+                rifleModel.position.set(0, -0.08, 0.12);
+
+                // Barrel tip location: unscaled is at (0.037, 0.534, -2.508)
+                muzzleMarker.position.set(
+                    rifleModel.position.x + 0.037 * scale,
+                    rifleModel.position.y + 0.534 * scale,
+                    rifleModel.position.z - 2.508 * scale
+                );
+                muzzleLight.position.copy(muzzleMarker.position);
+
+                weaponGroup.add(rifleModel);
+            }, undefined, (error) => {
+                console.error('Error loading rifle.glb:', error);
+            });
         }
 
         function setupLighting() {
@@ -627,103 +596,112 @@
             document.addEventListener('keydown', onKeyDown);
             document.addEventListener('keyup', onKeyUp);
 
-            // Left Mouse Click triggers weapon firing
+            // Left Mouse Click triggers rifle laser firing
             document.addEventListener('mousedown', function (event) {
                 if (controls.isLocked && event.button === 0) {
-                    shootPistol();
+                    shootRifle();
                 }
             });
         }
 
-        function shootPistol() {
+        function shootRifle() {
             playGunshotSound();
 
-            // Trigger Recoil Physics
-            recoilRotation += 0.22;
-            recoilOffset.z += 0.075;
-            recoilOffset.y += 0.015;
+            // Trigger Sci-Fi Rifle Recoil
+            recoilRotation += 0.12;
+            recoilOffset.z += 0.055;
+            recoilOffset.y += 0.008;
 
-            // Trigger Visual Muzzle Starburst
-            muzzleFlashGroup.visible = true;
-            muzzleFlashGroup.rotation.z = Math.random() * Math.PI;
-            muzzleLight.intensity = 4.5;
-            muzzleFlashTimer = 0.05; // 50ms flash
+            // Trigger Blue Muzzle Flash Light
+            if (muzzleLight) {
+                muzzleLight.intensity = 5.5;
+                muzzleFlashTimer = 0.06;
+            }
 
-            // Spawn Muzzle Smoke
-            spawnMuzzleSmoke();
-
-            // Raycast for pistol impact
+            // Raycast for laser impact from crosshair (camera center)
             const raycaster = new THREE.Raycaster();
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
 
-            const intersects = raycaster.intersectObjects(interactableMeshes);
+            // Targets include all scene obstacles and enemy (if alive)
+            const targets = [...interactableMeshes];
+            if (window.enemyManager && window.enemyManager.crystal && !window.enemyManager.isDead) {
+                targets.push(window.enemyManager.crystal);
+            }
+
+            const intersects = raycaster.intersectObjects(targets, true);
+
+            let targetPoint;
+            let hitNormal = null;
 
             if (intersects.length > 0) {
                 const hit = intersects[0];
-                spawnImpactSparks(hit.point, hit.face.normal);
-                spawnBulletDecal(hit.point, hit.face.normal);
-            }
-        }
+                targetPoint = hit.point;
+                if (hit.face) hitNormal = hit.face.normal;
 
-        function spawnMuzzleSmoke() {
+                // Check if hit enemy crystal
+                if (window.enemyManager && window.enemyManager.isEnemyObject(hit.object)) {
+                    window.enemyManager.takeDamage(50, hit.point);
+                    spawnLaserImpactSparks(hit.point, hitNormal || new THREE.Vector3(0, 1, 0));
+                } else {
+                    spawnLaserImpactSparks(hit.point, hitNormal || new THREE.Vector3(0, 1, 0));
+                    if (hitNormal) {
+                        spawnLaserDecal(hit.point, hitNormal);
+                    }
+                }
+            } else {
+                // If aiming into open distance, extend 100 meters forward
+                targetPoint = raycaster.ray.origin.clone().add(raycaster.ray.direction.clone().multiplyScalar(100));
+            }
+
+            // Muzzle world position
             const muzzleWorldPos = new THREE.Vector3();
-            muzzleFlashGroup.getWorldPosition(muzzleWorldPos);
+            if (muzzleMarker) {
+                muzzleMarker.getWorldPosition(muzzleWorldPos);
+            } else {
+                weaponGroup.getWorldPosition(muzzleWorldPos);
+            }
 
-            for (let i = 0; i < 5; i++) {
-                const smokeGeo = new THREE.SphereGeometry(0.02 + Math.random() * 0.02, 6, 6);
-                const smokeMat = new THREE.MeshBasicMaterial({
-                    color: 0xd0d0d0,
-                    transparent: true,
-                    opacity: 0.65
-                });
-                const p = new THREE.Mesh(smokeGeo, smokeMat);
-                p.position.copy(muzzleWorldPos);
-
-                const dir = new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.2,
-                    Math.random() * 0.25 + 0.1,
-                    (Math.random() - 0.5) * 0.2
-                );
-
-                particles.push({
-                    mesh: p,
-                    velocity: dir,
-                    life: 0.45 + Math.random() * 0.2,
-                    maxLife: 0.65,
-                    type: 'smoke'
-                });
-                scene.add(p);
+            // Emit 20mm diameter blue laser beam from rifle muzzle to target
+            if (playerLaserBeam) {
+                const laserDist = muzzleWorldPos.distanceTo(targetPoint);
+                playerLaserBeam.position.copy(muzzleWorldPos);
+                playerLaserBeam.lookAt(targetPoint);
+                playerLaserBeam.scale.set(1, 1, laserDist);
+                playerLaserBeam.visible = true;
+                playerLaserTimer = 0.08; // 80ms laser beam pulse
             }
         }
 
-        function spawnImpactSparks(position, normal) {
-            for (let i = 0; i < 9; i++) {
+        function spawnLaserImpactSparks(position, normal) {
+            for (let i = 0; i < 10; i++) {
                 const sparkGeo = new THREE.BoxGeometry(0.015, 0.015, 0.015);
-                const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffd044 });
+                const sparkMat = new THREE.MeshBasicMaterial({ color: 0x00d0ff });
                 const spark = new THREE.Mesh(sparkGeo, sparkMat);
                 spark.position.copy(position);
 
                 const reflect = normal.clone().add(new THREE.Vector3(
-                    (Math.random() - 0.5) * 1.3,
-                    (Math.random() - 0.5) * 1.3,
-                    (Math.random() - 0.5) * 1.3
-                )).normalize().multiplyScalar(4.5 + Math.random() * 4);
+                    (Math.random() - 0.5) * 1.4,
+                    (Math.random() - 0.5) * 1.4,
+                    (Math.random() - 0.5) * 1.4
+                )).normalize().multiplyScalar(4.0 + Math.random() * 3.5);
 
                 particles.push({
                     mesh: spark,
                     velocity: reflect,
-                    life: 0.2 + Math.random() * 0.15,
-                    maxLife: 0.35,
+                    life: 0.18 + Math.random() * 0.12,
+                    maxLife: 0.3,
                     type: 'spark'
                 });
                 scene.add(spark);
             }
         }
 
-        function spawnBulletDecal(position, normal) {
+        function spawnLaserDecal(position, normal) {
             const decalGeo = new THREE.PlaneGeometry(0.08, 0.08);
             const decalMat = new THREE.MeshBasicMaterial({
-                color: 0x111111,
+                color: 0x0088ff,
+                transparent: true,
+                opacity: 0.85,
                 side: THREE.DoubleSide,
                 polygonOffset: true,
                 polygonOffsetFactor: -1
@@ -849,8 +827,24 @@
                 recoilOffset.z *= (1 - delta * 10);
                 recoilOffset.y *= (1 - delta * 10);
 
-                weaponGroup.position.z = weaponBasePosition.z + recoilOffset.z;
-                weaponGroup.rotation.x = 0.08 + recoilRotation;
+                if (weaponGroup) {
+                    weaponGroup.position.z = weaponBasePosition.z + recoilOffset.z;
+                    weaponGroup.rotation.x = 0.03 + recoilRotation;
+                }
+
+                // Update player laser beam & muzzle flash timers
+                if (playerLaserTimer > 0) {
+                    playerLaserTimer -= delta;
+                    if (playerLaserTimer <= 0 && playerLaserBeam) {
+                        playerLaserBeam.visible = false;
+                    }
+                }
+                if (muzzleFlashTimer > 0) {
+                    muzzleFlashTimer -= delta;
+                    if (muzzleFlashTimer <= 0 && muzzleLight) {
+                        muzzleLight.intensity = 0;
+                    }
+                }
 
                 // Update Active Particles
                 for (let i = particles.length - 1; i >= 0; i--) {

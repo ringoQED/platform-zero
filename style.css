@@ -118,11 +118,11 @@ body, html {
     position: absolute;
     bottom: 24px;
     right: 32px;
-    color: #ff4d4d;
+    color: #00d0ff;
     font-family: monospace;
     font-size: 26px;
     font-weight: bold;
-    text-shadow: 0 0 10px rgba(255, 77, 77, 0.6);
+    text-shadow: 0 0 12px rgba(0, 208, 255, 0.7);
     pointer-events: none;
     z-index: 10;
 }
@@ -177,4 +177,58 @@ body, html {
 
 #game-over button:hover {
     background: #ff6666;
+}
+
+#enemy-ui-container {
+    position: absolute;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(12, 12, 20, 0.85);
+    padding: 10px 22px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 75, 75, 0.45);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6), 0 0 15px rgba(255, 50, 50, 0.25);
+    backdrop-filter: blur(8px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    z-index: 10;
+    pointer-events: none;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+#enemy-name {
+    color: #ff5555;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-shadow: 0 0 8px rgba(255, 50, 50, 0.5);
+}
+
+#enemy-health-bar {
+    width: 220px;
+    height: 10px;
+    background: rgba(40, 20, 20, 0.85);
+    border-radius: 5px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 100, 100, 0.35);
+}
+
+#enemy-health-fill {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, #ff3333, #ffaa00);
+    box-shadow: 0 0 10px #ff5500;
+    transition: width 0.25s ease-out;
+}
+
+#enemy-health-text {
+    color: #ffb3b3;
+    font-family: monospace;
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
 }
