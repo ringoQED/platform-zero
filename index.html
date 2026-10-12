@@ -172,7 +172,7 @@ TELEMETRY: OK
     </div>
     <div id="game-over">
         <h1>Game Over!</h1>
-        <button onclick="location.reload()">OK</button>
+        <button onclick="location.reload()">Fight Again!</button>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -186,6 +186,14 @@ TELEMETRY: OK
         window.gameStarted = false;
         let gameStartTime = null;
         let isTimeStopped = false;
+
+        // Retro Atmospheric Overhead Lights
+        let retroLight1 = null;
+        let retroLight2 = null;
+        let retroFixture1Mat = null;
+        let retroFixture2Mat = null;
+        const baseIntensity1 = 1.35;
+        const baseIntensity2 = 1.45;
 
         // Enemy HP removed from HUD per instructions
         window.updateEnemyHealthUI = function() {};
@@ -538,7 +546,7 @@ TELEMETRY: OK
             if (!bgMusic) {
                 bgMusic = new Audio('sound/bgd_music.mp3');
                 bgMusic.loop = true;
-                bgMusic.volume = 0.8; // Balanced volume so laser and human sounds remain clearly heard
+                bgMusic.volume = 0.35; // Balanced volume so laser and human sounds remain clearly heard
                 bgMusic.preload = 'auto';
             }
         }
@@ -570,7 +578,7 @@ TELEMETRY: OK
                     source.start(0);
                 } else {
                     const audio = new Audio('sound/man_die.mp3');
-                    audio.volume = 1.0;
+                    audio.volume = 2.0;
                     audio.play().catch(() => {});
                 }
             } catch(e) {
@@ -800,7 +808,7 @@ TELEMETRY: OK
         }
 
         function setupLighting() {
-            scene.add(new THREE.AmbientLight(0xfff2e6, 0.68));
+            scene.add(new THREE.AmbientLight(0xfff2e6, 0.05));
 
             // Central Recessed Light Strip Trough
             const tubeGeo = new THREE.BoxGeometry(100, 0.08, 0.35);
@@ -816,11 +824,48 @@ TELEMETRY: OK
             // Warm station lighting
             for (let x = -32; x <= 32; x += 32) {
                 for (let z = -32; z <= 32; z += 32) {
-                    const pl = new THREE.PointLight(0xffecd8, 0.4, 38);
+                    const pl = new THREE.PointLight(0xffecd8, 0.38, 38);
                     pl.position.set(x, 3.8, z);
                     scene.add(pl);
                 }
             }
+
+            // --- Retro Overhead Lights ---
+            // Light 1 (Eerie Pulse): Near the end of the platform scene, close to the left (x = -32, z = -38)
+            const housingGeo1 = new THREE.BoxGeometry(0.7, 0.1, 2.0);
+            const housingMat1 = new THREE.MeshLambertMaterial({ color: 0x16171b });
+            const housing1 = new THREE.Mesh(housingGeo1, housingMat1);
+            housing1.position.set(-32, 4.14, -38);
+            scene.add(housing1);
+
+            retroFixture1Mat = new THREE.MeshBasicMaterial({ color: 0xff9f43, transparent: true, opacity: 0.9 });
+            const tubeMesh1 = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.8, 8), retroFixture1Mat);
+            tubeMesh1.rotation.x = Math.PI / 2;
+            tubeMesh1.position.set(-32, 4.05, -38);
+            scene.add(tubeMesh1);
+
+            retroLight1 = new THREE.PointLight(0xff9433, baseIntensity1, 32);
+            retroLight1.position.set(-32, 3.85, -38);
+            retroLight1.castShadow = false; // Optimal performance, avoid shadow map overhead
+            scene.add(retroLight1);
+
+            // Light 2 (Faulty Neon Flicker): Near the start of the scene, around the middle location (x = 0, z = 6)
+            const housingGeo2 = new THREE.BoxGeometry(0.6, 0.1, 2.2);
+            const housingMat2 = new THREE.MeshLambertMaterial({ color: 0x14181c });
+            const housing2 = new THREE.Mesh(housingGeo2, housingMat2);
+            housing2.position.set(0, 4.14, 6);
+            scene.add(housing2);
+
+            retroFixture2Mat = new THREE.MeshBasicMaterial({ color: 0xc4f4ff, transparent: true, opacity: 0.95 });
+            const tubeMesh2 = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.0, 8), retroFixture2Mat);
+            tubeMesh2.rotation.x = Math.PI / 2;
+            tubeMesh2.position.set(0, 4.05, 6);
+            scene.add(tubeMesh2);
+
+            retroLight2 = new THREE.PointLight(0xbbf0ff, baseIntensity2, 28);
+            retroLight2.position.set(0, 3.85, 6);
+            retroLight2.castShadow = false; // Optimal performance, avoid shadow map overhead
+            scene.add(retroLight2);
         }
 
         function setupInput() {
@@ -1009,6 +1054,26 @@ TELEMETRY: OK
 
             const time = performance.now();
             const delta = Math.min((time - prevTime) / 1000, 0.1);
+
+            // Retro Overhead Lights Modulation (Pulse & Flicker)
+            // Light 1 (Eerie Pulse): Modulate its intensity using a combination of sine waves in the render loop
+            if (retroLight1) {
+                const t = time * 0.001;
+                const pulse = Math.sin(t * 3) * 0.3 + Math.sin(t * 7) * 0.1;
+                retroLight1.intensity = baseIntensity1 + pulse;
+                if (retroFixture1Mat) {
+                    retroFixture1Mat.opacity = Math.min(1.0, 0.45 + (retroLight1.intensity / baseIntensity1) * 0.55);
+                }
+            }
+
+            // Light 2 (Faulty Neon Flicker): Simulate a malfunctioning neon light with occasional sudden drops
+            if (retroLight2) {
+                const noise = Math.random();
+                retroLight2.intensity = noise > 0.88 ? baseIntensity2 * 0.15 : (noise > 0.7 ? baseIntensity2 * 0.6 : baseIntensity2);
+                if (retroFixture2Mat) {
+                    retroFixture2Mat.opacity = (retroLight2.intensity / baseIntensity2) * 0.8 + 0.2;
+                }
+            }
             
             updateEnemy(delta, camera);
 
