@@ -650,6 +650,8 @@ TELEMETRY: OK
             initPlayerSounds();
             initBgMusic();
             loadRifleModel();
+            loadTicketGates();
+            loadEscalators();
             setupLighting();
             setupInput();
 
@@ -804,6 +806,113 @@ TELEMETRY: OK
                 weaponGroup.add(rifleModel);
             }, undefined, (error) => {
                 console.error('Error loading rifle.glb:', error);
+            });
+        }
+
+        function loadTicketGates() {
+            const loader = new THREE.GLTFLoader();
+            loader.load('model/3_ticket_gate.glb', (gltf) => {
+                const baseGate = gltf.scene;
+
+                // Scale to realistic MTR station gate dimensions (~1.3m height, ~4.9m total width for 3 turnstiles)
+                const scale = 0.0125;
+                baseGate.scale.set(scale, scale, scale);
+
+                // Configure materials for realistic metallic look and distinct emissive screen arrows
+                baseGate.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        child.material.roughness = 0.35;
+                        child.material.metalness = 0.55;
+                        if (child.material.emissiveMap || child.material.emissive) {
+                            child.material.emissiveIntensity = 1.3;
+                        }
+                    }
+                });
+
+                // 1. Left Ticket Gates: on the left side of the corridor, extending from nearest left pillar outward
+                const leftGate = baseGate.clone(true);
+                leftGate.position.set(-8.25, 0, 15.8);
+                leftGate.rotation.y = Math.PI / 2; // Green arrows facing player spawn (+Z)
+                scene.add(leftGate);
+
+                // 2. Right Ticket Gates: on the right side of the corridor, extending from nearest right pillar outward
+                const rightGate = baseGate.clone(true);
+                rightGate.position.set(8.25, 0, 15.8);
+                rightGate.rotation.y = Math.PI / 2; // Green arrows facing player spawn (+Z)
+                scene.add(rightGate);
+
+                // Add to colliders and interactable meshes for physics collision and laser hits
+                [leftGate, rightGate].forEach((gate) => {
+                    gate.traverse((child) => {
+                        if (child.isMesh) {
+                            interactableMeshes.push(child);
+                        }
+                    });
+                    const box = new THREE.Box3().setFromObject(gate);
+                    colliders.push(box);
+                });
+            }, undefined, (error) => {
+                console.error('Error loading 3_ticket_gate.glb:', error);
+            });
+        }
+
+        function loadEscalators() {
+            const loader = new THREE.GLTFLoader();
+            loader.load('model/escalators.glb', (gltf) => {
+                const escalatorModel = gltf.scene;
+
+                // Measure raw bounding box to accurately scale within room dimensions
+                const rawBox = new THREE.Box3().setFromObject(escalatorModel);
+                const rawSize = new THREE.Vector3();
+                rawBox.getSize(rawSize);
+
+                // Room floor is at y = 0, ceiling is at y = 4.2.
+                // Scale so escalator fits realistically (~3.8m tall, ~3.2m wide, ~6.2m long)
+                // leaving clean 0.4m clearance from ceiling and resting flush on the floor.
+                const targetHeight = 3.8;
+                const scale = targetHeight / rawSize.y;
+                escalatorModel.scale.set(scale, scale, scale);
+
+                // Re-measure after scaling to perfectly center and align to floor
+                const scaledBox = new THREE.Box3().setFromObject(escalatorModel);
+                const scaledCenter = new THREE.Vector3();
+                scaledBox.getCenter(scaledCenter);
+
+                // Group placed at the middle of the scene (x: 0, z: 0)
+                const escalatorGroup = new THREE.Group();
+                escalatorGroup.position.set(0, 0, 0);
+
+                // Offset model so X and Z are centered at 0, and min Y is at 0 (resting on floor)
+                escalatorModel.position.x = -scaledCenter.x;
+                escalatorModel.position.y = -scaledBox.min.y; // Lowest point at y = 0
+                escalatorModel.position.z = -scaledCenter.z;
+
+                escalatorGroup.add(escalatorModel);
+                scene.add(escalatorGroup);
+
+                // Enhance materials for realistic subway look (glass balustrades, brushed metal, and stairs)
+                escalatorModel.traverse((child) => {
+                    if (child.isMesh) {
+                        interactableMeshes.push(child);
+                        if (child.material) {
+                            if (child.material.name === 'GlassSidewalls' || (child.name && child.name.toLowerCase().includes('glass'))) {
+                                child.material.transparent = true;
+                                child.material.opacity = 0.55;
+                                child.material.roughness = 0.1;
+                                child.material.metalness = 0.15;
+                            } else if (child.material.name === 'brushed_metal' || child.material.name === 'STAIR_METAL') {
+                                child.material.roughness = 0.35;
+                                child.material.metalness = 0.65;
+                            }
+                        }
+                    }
+                });
+
+                // Add bounding box to colliders so player and enemies collide realistically
+                const finalBox = new THREE.Box3().setFromObject(escalatorGroup);
+                colliders.push(finalBox);
+            }, undefined, (error) => {
+                console.error('Error loading escalators.glb:', error);
             });
         }
 
