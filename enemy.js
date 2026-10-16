@@ -7,7 +7,7 @@ class SingleEnemy {
         this.time = 0;
 
         // Enemy physics & flight parameters
-        this.speed = 5.0; // 5m per second
+        this.speed = 3.0; // 3m per second
         this.radius = 0.5; // ~1m diameter sphere collider
 
         // Position crystal
@@ -428,10 +428,12 @@ class SingleEnemy {
 
         // 3. Yellowish Fire Particles (60 particles)
         const fireColors = [0xfff24f, 0xffea00, 0xffd000, 0xffb703, 0xffa000, 0xff8c00];
-        for (let i = 0; i < 60; i++) {
+        for (let i = 0; i < 100; i++) {
             const fireGeo = (i % 2 === 0) 
-                ? new THREE.DodecahedronGeometry(0.12 + Math.random() * 0.12)
-                : new THREE.TetrahedronGeometry(0.14 + Math.random() * 0.14);
+                //? new THREE.DodecahedronGeometry(0.12 + Math.random() * 0.12)
+                ? new THREE.DodecahedronGeometry(0.1, 1)
+                //: new THREE.TetrahedronGeometry(0.14 + Math.random() * 0.14);
+                : new THREE.TetrahedronGeometry(0.1, 3);
             const color = fireColors[Math.floor(Math.random() * fireColors.length)];
             const fireMat = new THREE.MeshBasicMaterial({
                 color: color,
