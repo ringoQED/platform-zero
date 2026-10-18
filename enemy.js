@@ -777,7 +777,8 @@ class EnemyManager {
         const minPlayerDist = 16.0;
         const minEnemyDist = 12.0;
         const ENEMY_RADIUS = 0.5;
-        const playerStart = new THREE.Vector3(0, 1.6, 10);
+        //const playerStart = new THREE.Vector3(0, 1.6, 10);
+        const playerStart = new THREE.Vector3(0, 1.6, 47.5);
         const pillarBoxes = (window.colliders && window.colliders.length > 0) ? window.colliders : [];
 
         for (let attempts = 0; attempts < 300; attempts++) {

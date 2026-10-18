@@ -1,14 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mong Kok Station - First Person FPS</title>
+    <title>Platform Zero</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
     <div id="blocker">
         <div id="splash-container">
@@ -16,14 +19,15 @@
             <button id="enter-button" aria-label="Enter to Fight!"></button>
         </div>
     </div>
-    
+
     <!-- Sci-Fi Visor Heads Up Display (HUD) - 75% Scale -->
     <div id="hud-layer" class="hud-layer">
         <!-- 1. Top-Left: TIME PASSED Panel -->
         <div id="hud-time-panel" class="hud-panel">
             <svg class="hud-panel-svg" viewBox="0 0 250 80" preserveAspectRatio="none">
-                <path d="M 20 2 L 105 2 L 110 5 L 140 5 L 145 2 L 230 2 L 248 20 L 248 60 L 230 78 L 20 78 L 2 60 L 2 20 Z" 
-                      fill="rgba(0, 18, 30, 0.35)" stroke="#00e5ff" stroke-width="2" />
+                <path
+                    d="M 20 2 L 105 2 L 110 5 L 140 5 L 145 2 L 230 2 L 248 20 L 248 60 L 230 78 L 20 78 L 2 60 L 2 20 Z"
+                    fill="rgba(0, 18, 30, 0.35)" stroke="#00e5ff" stroke-width="2" />
             </svg>
             <div class="hud-panel-content hud-time-content">
                 <div class="hud-time-label">TIME PASSED:</div>
@@ -70,52 +74,54 @@
         <!-- 3. Left Side Holographic Telemetry Feed -->
         <div id="hud-telemetry-left" class="hud-telemetry">
             <svg class="hud-panel-svg" viewBox="0 0 135 240" preserveAspectRatio="none">
-                <path d="M 18 2 L 2 2 L 2 238 L 18 238" stroke="#00e5ff" stroke-width="1.5" fill="none" opacity="0.6"/>
+                <path d="M 18 2 L 2 2 L 2 238 L 18 238" stroke="#00e5ff" stroke-width="1.5" fill="none" opacity="0.6" />
             </svg>
             <div class="hud-telemetry-text">
-// SYS.DIAGNOSTICS
-STATUS: NOMINAL
-GRID: MTR_MK_L2
-BUFFER: 1024 KB
-BEARING: 042° N
-SYNC: ACTIVE
-FLUX: OPTIMAL
-RAD: 0.002 mSv
-TARGET: ACQUIRED
-RECON: SCANNING...
-SEC_LINK: ONLINE
+                // SYS.DIAGNOSTICS
+                STATUS: NOMINAL
+                GRID: MTR_MK_L2
+                BUFFER: 1024 KB
+                BEARING: 042° N
+                SYNC: ACTIVE
+                FLUX: OPTIMAL
+                RAD: 0.002 mSv
+                TARGET: ACQUIRED
+                RECON: SCANNING...
+                SEC_LINK: ONLINE
             </div>
         </div>
 
         <!-- 4. Right Side Holographic Telemetry Feed -->
         <div id="hud-telemetry-right" class="hud-telemetry">
             <svg class="hud-panel-svg" viewBox="0 0 135 240" preserveAspectRatio="none">
-                <path d="M 117 2 L 133 2 L 133 238 L 117 238" stroke="#00e5ff" stroke-width="1.5" fill="none" opacity="0.6"/>
+                <path d="M 117 2 L 133 2 L 133 238 L 117 238" stroke="#00e5ff" stroke-width="1.5" fill="none"
+                    opacity="0.6" />
             </svg>
             <div class="hud-telemetry-text" style="text-align: right;">
-OPTICS // 100% \\
-FREQ: 5.40 GHz
-SIG: 98.4 dBm
-RANGE: 40.0 m
-SHIELD: ENGAGED
-POWER: STABLE
-CORE TEMP: 34°C
-VISOR: POLARIZED
-TELEMETRY: OK
+                OPTICS // 100% \\
+                FREQ: 5.40 GHz
+                SIG: 98.4 dBm
+                RANGE: 40.0 m
+                SHIELD: ENGAGED
+                POWER: STABLE
+                CORE TEMP: 34°C
+                VISOR: POLARIZED
+                TELEMETRY: OK
             </div>
         </div>
 
         <!-- 5. Lower-Left: HEALTH Panel -->
         <div id="hud-health-panel" class="hud-panel">
             <svg class="hud-panel-svg" viewBox="0 0 320 82" preserveAspectRatio="none">
-                <path d="M 20 2 L 300 2 L 318 20 L 318 62 L 300 80 L 20 80 L 2 62 L 2 20 Z" 
-                      fill="rgba(0, 18, 30, 0.35)" stroke="#00e5ff" stroke-width="2" />
+                <path d="M 20 2 L 300 2 L 318 20 L 318 62 L 300 80 L 20 80 L 2 62 L 2 20 Z" fill="rgba(0, 18, 30, 0.35)"
+                    stroke="#00e5ff" stroke-width="2" />
             </svg>
             <div class="hud-panel-content hud-health-layout">
                 <!-- Humanoid Soldier Silhouette Icon -->
                 <svg class="hud-soldier-icon" viewBox="0 0 32 60">
                     <g fill="#ffffff" stroke="#00e5ff" stroke-width="1.2" stroke-linejoin="round">
-                        <path d="M 12 3 C 12 1, 20 1, 20 3 C 22 5, 22 10, 20 12 C 18 13, 14 13, 12 12 C 10 10, 10 5, 12 3 Z" />
+                        <path
+                            d="M 12 3 C 12 1, 20 1, 20 3 C 22 5, 22 10, 20 12 C 18 13, 14 13, 12 12 C 10 10, 10 5, 12 3 Z" />
                         <path d="M 12 7 Q 16 9 20 7" stroke="#00e5ff" stroke-width="1.2" fill="none" />
                         <path d="M 10 15 L 22 15 L 21 27 L 11 27 Z" />
                         <path d="M 9 15 L 5 18 L 4 28 L 7 28 L 8 20 L 9 18 Z" />
@@ -142,8 +148,8 @@ TELEMETRY: OK
         <!-- 6. Lower-Right: LASER ENERGY Panel -->
         <div id="hud-energy-panel" class="hud-panel">
             <svg class="hud-panel-svg" viewBox="0 0 320 82" preserveAspectRatio="none">
-                <path d="M 20 2 L 300 2 L 318 20 L 318 62 L 300 80 L 20 80 L 2 62 L 2 20 Z" 
-                      fill="rgba(0, 18, 30, 0.35)" stroke="#00e5ff" stroke-width="2" />
+                <path d="M 20 2 L 300 2 L 318 20 L 318 62 L 300 80 L 20 80 L 2 62 L 2 20 Z" fill="rgba(0, 18, 30, 0.35)"
+                    stroke="#00e5ff" stroke-width="2" />
             </svg>
             <div class="hud-panel-content hud-energy-content">
                 <div class="hud-energy-header">
@@ -196,7 +202,7 @@ TELEMETRY: OK
         const baseIntensity2 = 1.45;
 
         // Enemy HP removed from HUD per instructions
-        window.updateEnemyHealthUI = function() {};
+        window.updateEnemyHealthUI = function () { };
 
         function stopTimePassedCounter() {
             if (isTimeStopped) return;
@@ -221,7 +227,7 @@ TELEMETRY: OK
             if (pct) pct.textContent = hp + '%';
         }
 
-        window.damagePlayer = function(amount) {
+        window.damagePlayer = function (amount) {
             if (window.isDead) return;
             window.playerHealth -= amount;
             if (window.playerHealth <= 0) {
@@ -237,7 +243,7 @@ TELEMETRY: OK
             }
             updatePlayerHealthHUD();
         };
-        
+
         // Player Motion state
         let moveForward = false;
         let moveBackward = false;
@@ -308,7 +314,7 @@ TELEMETRY: OK
             // Grid tile seams
             ctx.strokeStyle = 'rgba(110, 90, 70, 0.3)';
             ctx.lineWidth = 3;
-            for(let p = 0; p <= 512; p += 128) {
+            for (let p = 0; p <= 512; p += 128) {
                 ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, 512); ctx.stroke();
                 ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(512, p); ctx.stroke();
             }
@@ -316,8 +322,8 @@ TELEMETRY: OK
             const tex = new THREE.CanvasTexture(canvas);
             tex.wrapS = THREE.RepeatWrapping;
             tex.wrapT = THREE.RepeatWrapping;
-            tex.repeat.set(25, 25); 
-            tex.magFilter = THREE.LinearFilter; 
+            tex.repeat.set(25, 25);
+            tex.magFilter = THREE.LinearFilter;
             return tex;
         }
 
@@ -350,7 +356,7 @@ TELEMETRY: OK
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
-            
+
             // Vibrant red base
             ctx.fillStyle = '#cc1111';
             ctx.fillRect(0, 0, width, height);
@@ -359,12 +365,12 @@ TELEMETRY: OK
             const tileSize = 12;
             ctx.strokeStyle = '#990000';
             ctx.lineWidth = 1;
-            
+
             ctx.beginPath();
-            for(let x = 0; x <= width; x += tileSize) {
+            for (let x = 0; x <= width; x += tileSize) {
                 ctx.moveTo(x, 0); ctx.lineTo(x, height);
             }
-            for(let y = 0; y <= height; y += tileSize) {
+            for (let y = 0; y <= height; y += tileSize) {
                 ctx.moveTo(0, y); ctx.lineTo(width, y);
             }
             ctx.stroke();
@@ -387,7 +393,7 @@ TELEMETRY: OK
             if (hasText) {
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
-                
+
                 // Drop shadow
                 ctx.fillStyle = '#000000';
                 const off = 3;
@@ -453,7 +459,7 @@ TELEMETRY: OK
                         gunSoundBuffer = buffer;
                     })
                     .catch(e => console.warn('Could not preload gun_sound.mp3:', e));
-            } catch(e) {
+            } catch (e) {
                 console.warn(e);
             }
         }
@@ -477,16 +483,16 @@ TELEMETRY: OK
                 } else {
                     const audio = new Audio('sound/gun_sound.mp3');
                     audio.volume = 0.8;
-                    audio.play().catch(() => {});
+                    audio.play().catch(() => { });
                 }
-            } catch(e) {
+            } catch (e) {
                 console.warn('Audio error:', e);
             }
         }
 
         function initPlayerSounds() {
             try {
-                fetch('sound/man_hurt.mp3')
+                fetch('sound/man_hurt_1.mp3')
                     .then(res => res.arrayBuffer())
                     .then(arrayBuffer => {
                         const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -496,7 +502,7 @@ TELEMETRY: OK
                     .then(buffer => {
                         manHurtBuffer = buffer;
                     })
-                    .catch(e => console.warn('Could not preload man_hurt.mp3:', e));
+                    .catch(e => console.warn('Could not preload man_hurt_1.mp3:', e));
 
                 fetch('sound/man_die.mp3')
                     .then(res => res.arrayBuffer())
@@ -509,7 +515,7 @@ TELEMETRY: OK
                         manDieBuffer = buffer;
                     })
                     .catch(e => console.warn('Could not preload man_die.mp3:', e));
-            } catch(e) {
+            } catch (e) {
                 console.warn(e);
             }
         }
@@ -531,12 +537,12 @@ TELEMETRY: OK
                     gain.connect(audioCtx.destination);
                     source.start(0);
                 } else {
-                    const audio = new Audio('sound/man_hurt.mp3');
+                    const audio = new Audio('sound/man_hurt_1.mp3');
                     audio.volume = 1.0;
-                    audio.play().catch(() => {});
+                    audio.play().catch(() => { });
                 }
-            } catch(e) {
-                console.warn('Audio error (man_hurt):', e);
+            } catch (e) {
+                console.warn('Audio error (man_hurt_1):', e);
             }
         }
 
@@ -572,16 +578,16 @@ TELEMETRY: OK
                     const source = audioCtx.createBufferSource();
                     source.buffer = manDieBuffer;
                     const gain = audioCtx.createGain();
-                    gain.gain.value = 1.0;
+                    gain.gain.value = 2.0;
                     source.connect(gain);
                     gain.connect(audioCtx.destination);
                     source.start(0);
                 } else {
                     const audio = new Audio('sound/man_die.mp3');
                     audio.volume = 2.0;
-                    audio.play().catch(() => {});
+                    audio.play().catch(() => { });
                 }
-            } catch(e) {
+            } catch (e) {
                 console.warn('Audio error (man_die):', e);
             }
         }
@@ -590,11 +596,11 @@ TELEMETRY: OK
             scene = new THREE.Scene();
             scene.background = new THREE.Color('#08080c');
             scene.fog = new THREE.FogExp2('#0a0a0f', 0.018);
-            
+
             initEnemy(scene);
 
             camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 120);
-            
+
             renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -643,7 +649,8 @@ TELEMETRY: OK
             });
 
             scene.add(controls.getObject());
-            controls.getObject().position.set(0, PLAYER_HEIGHT, 10);
+            //controls.getObject().position.set(0, PLAYER_HEIGHT, 10);
+            controls.getObject().position.set(0, PLAYER_HEIGHT, 47.5);
 
             createLevel();
             initGunSound();
@@ -656,7 +663,7 @@ TELEMETRY: OK
             setupInput();
 
             window.addEventListener('resize', onWindowResize);
-            
+
             animate();
         }
 
@@ -686,7 +693,7 @@ TELEMETRY: OK
             const sideTex = createMosaicPillarTexture(64, 64, false);
             sideTex.wrapS = THREE.RepeatWrapping;
             sideTex.wrapT = THREE.RepeatWrapping;
-            sideTex.repeat.set(1, 6); 
+            sideTex.repeat.set(1, 6);
 
             const matFront = new THREE.MeshLambertMaterial({ map: frontTex });
             const matSide = new THREE.MeshLambertMaterial({ map: sideTex });
@@ -750,10 +757,10 @@ TELEMETRY: OK
             const laserGeo = new THREE.CylinderGeometry(0.01, 0.01, 1, 8);
             laserGeo.rotateX(Math.PI / 2);
             laserGeo.translate(0, 0, 0.5); // origin at start of cylinder
-            const laserMat = new THREE.MeshBasicMaterial({ 
-                color: 0x00aaff, 
-                transparent: true, 
-                opacity: 0.92 
+            const laserMat = new THREE.MeshBasicMaterial({
+                color: 0x00aaff,
+                transparent: true,
+                opacity: 0.92
             });
             playerLaserBeam = new THREE.Mesh(laserGeo, laserMat);
 
@@ -923,7 +930,7 @@ TELEMETRY: OK
             const tubeGeo = new THREE.BoxGeometry(100, 0.08, 0.35);
             const tubeMat = new THREE.MeshBasicMaterial({ color: 0xfffcf5 });
 
-            for (let x = -40; x <= 40; x += 16) { 
+            for (let x = -40; x <= 40; x += 16) {
                 const lightStrip = new THREE.Mesh(tubeGeo, tubeMat);
                 lightStrip.position.set(x, 4.12, 0);
                 lightStrip.rotation.y = Math.PI / 2;
@@ -1183,7 +1190,7 @@ TELEMETRY: OK
                     retroFixture2Mat.opacity = (retroLight2.intensity / baseIntensity2) * 0.8 + 0.2;
                 }
             }
-            
+
             updateEnemy(delta, camera);
 
             // Update Time Passed (minutes:seconds since game starts, stops when player dies)
@@ -1339,4 +1346,5 @@ TELEMETRY: OK
         window.onload = init;
     </script>
 </body>
+
 </html>
