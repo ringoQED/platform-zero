@@ -201,6 +201,13 @@
         const baseIntensity1 = 1.35;
         const baseIntensity2 = 1.45;
 
+        // Stairwell Landing Faulty Light
+        let landingLight = null;
+        let landingFixtureMat = null;
+        const baseLandingIntensity = 0.95;
+        let landingFlickerTimer = 0;
+        let landingFlickerMode = 0;
+
         // Enemy HP removed from HUD per instructions
         window.updateEnemyHealthUI = function () { };
 
@@ -446,6 +453,421 @@
             return tex;
         }
 
+        function getGroundHeight(x, z) {
+            // Check if player is within the 3.0m wide stairwell corridor (-1.55 to 1.55)
+            if (Math.abs(x) <= 1.55) {
+                if (z >= 49.5 && z <= 57.5) {
+                    // Ascending the staircase from ground (y = 0.0) to platform ceiling height (y = 4.2)
+                    return ((z - 49.5) / 8.0) * 4.2;
+                } else if (z > 57.5 && z <= 62.6) {
+                    // Upper landing at platform ceiling height
+                    return 4.2;
+                }
+            }
+            return 0.0;
+        }
+
+        function createExitSignTexture(title = "WAY OUT  出口 ↑") {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+
+            // Dark metallic bezel
+            ctx.fillStyle = '#101316';
+            ctx.fillRect(0, 0, 512, 128);
+
+            // Backlit vibrant green emergency background
+            ctx.fillStyle = '#008b45';
+            ctx.fillRect(8, 8, 496, 112);
+
+            // Inner subtle border
+            ctx.strokeStyle = '#00e676';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(12, 12, 488, 104);
+
+            // White symbol & lettering
+            ctx.fillStyle = '#ffffff';
+
+            // Running person icon / Upward arrow
+            ctx.beginPath();
+            ctx.moveTo(42, 64);
+            ctx.lineTo(76, 28);
+            ctx.lineTo(76, 48);
+            ctx.lineTo(112, 48);
+            ctx.lineTo(112, 80);
+            ctx.lineTo(76, 80);
+            ctx.lineTo(76, 100);
+            ctx.closePath();
+            ctx.fill();
+
+            // Text
+            ctx.font = 'bold 36px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(title, 132, 64);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.magFilter = THREE.LinearFilter;
+            return tex;
+        }
+
+        function createStairTreadTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            // Dark granite concrete base
+            ctx.fillStyle = '#2b3037';
+            ctx.fillRect(0, 0, 256, 256);
+
+            for (let i = 0; i < 3000; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? '#3b424b' : '#1e2226';
+                ctx.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
+            }
+
+            // High-vis safety yellow nosing with anti-slip grooves
+            ctx.fillStyle = '#f5c518';
+            ctx.fillRect(0, 0, 256, 42);
+
+            ctx.fillStyle = '#1e2024';
+            for (let x = 0; x < 256; x += 16) {
+                ctx.fillRect(x, 6, 8, 30);
+            }
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(3, 1);
+            return tex;
+        }
+
+        function createStairwellWallTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            // Off-white ceramic subway tiles
+            ctx.fillStyle = '#dedad2';
+            ctx.fillRect(0, 0, 512, 512);
+
+            // Tile grout grid
+            ctx.strokeStyle = '#aca79b';
+            ctx.lineWidth = 2;
+            const tileW = 64;
+            const tileH = 32;
+            for (let y = 0; y < 512; y += tileH) {
+                const row = Math.floor(y / tileH);
+                const offsetX = (row % 2 === 0) ? 0 : tileW / 2;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(512, y);
+                ctx.stroke();
+                for (let x = -offsetX; x <= 512; x += tileW) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(x, y + tileH);
+                    ctx.stroke();
+                }
+            }
+
+            // Retro green accent band across the middle
+            ctx.fillStyle = '#1b5e3b';
+            ctx.fillRect(0, 220, 512, 32);
+
+            // Dark lower baseboard
+            ctx.fillStyle = '#1c2024';
+            ctx.fillRect(0, 460, 512, 52);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            tex.wrapS = THREE.RepeatWrapping;
+            tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(4, 2);
+            return tex;
+        }
+
+        function createExitDoorTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            // Industrial dark steel double exit doors
+            ctx.fillStyle = '#262930';
+            ctx.fillRect(0, 0, 512, 512);
+
+            // Split into two doors
+            ctx.strokeStyle = '#101215';
+            ctx.lineWidth = 6;
+            ctx.strokeRect(4, 4, 248, 504);
+            ctx.strokeRect(260, 4, 248, 504);
+
+            // Frosted glass panels
+            ctx.fillStyle = '#425566';
+            ctx.fillRect(30, 40, 196, 200);
+            ctx.fillRect(286, 40, 196, 200);
+
+            // Window frames
+            ctx.strokeStyle = '#181b20';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(30, 40, 196, 200);
+            ctx.strokeRect(286, 40, 196, 200);
+
+            // Window reflections
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.beginPath();
+            ctx.moveTo(30, 40); ctx.lineTo(130, 40); ctx.lineTo(60, 240); ctx.lineTo(30, 240);
+            ctx.closePath(); ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(286, 40); ctx.lineTo(386, 40); ctx.lineTo(316, 240); ctx.lineTo(286, 240);
+            ctx.closePath(); ctx.fill();
+
+            // Emergency push bars (Red with silver core)
+            ctx.fillStyle = '#c62828';
+            ctx.fillRect(24, 280, 208, 20);
+            ctx.fillRect(280, 280, 208, 20);
+            ctx.fillStyle = '#e0e0e0';
+            ctx.fillRect(24, 286, 208, 8);
+            ctx.fillRect(280, 286, 208, 8);
+
+            // Metal kick plates at bottom
+            ctx.fillStyle = '#3a4049';
+            ctx.fillRect(20, 400, 216, 90);
+            ctx.fillRect(276, 400, 216, 90);
+
+            // "PUSH / 推" notice
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 20px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('PUSH  推', 128, 260);
+            ctx.fillText('PUSH  推', 384, 260);
+
+            const tex = new THREE.CanvasTexture(canvas);
+            return tex;
+        }
+
+        function createBackExitStairs(scene, interactableMeshes, colliders) {
+            const backWallMat = new THREE.MeshLambertMaterial({ color: 0x1e2228 });
+            const stairTreadTex = createStairTreadTexture();
+            const stairWallTex = createStairwellWallTexture();
+            const exitDoorTex = createExitDoorTexture();
+            const ceilingTex = createSlattedCeilingTexture();
+            const exitSignEntranceTex = createExitSignTexture("WAY OUT  出口 ↑");
+            const exitSignUpperTex = createExitSignTexture("STATION EXIT  出口 →");
+
+            const stairMat = new THREE.MeshLambertMaterial({ map: stairTreadTex, roughness: 0.5 });
+            const wallMat = new THREE.MeshLambertMaterial({ map: stairWallTex });
+            const ceilingMat = new THREE.MeshLambertMaterial({ map: ceilingTex, side: THREE.DoubleSide });
+            const doorMat = new THREE.MeshLambertMaterial({ map: exitDoorTex });
+            const metalMat = new THREE.MeshStandardMaterial({ color: 0xd8d8d8, metalness: 0.8, roughness: 0.25 });
+            const darkMetalMat = new THREE.MeshLambertMaterial({ color: 0x22262d });
+
+            // 1. Back Outer Wall Split (left and right of the 3.0m wide exit portal)
+            // Left segment: x from -50 to -1.5 (width = 48.5m, center = -25.75)
+            const leftBackWall = new THREE.Mesh(new THREE.PlaneGeometry(48.5, 4.2), backWallMat);
+            leftBackWall.position.set(-25.75, 2.1, 49.5);
+            leftBackWall.rotation.y = Math.PI;
+            scene.add(leftBackWall);
+            interactableMeshes.push(leftBackWall);
+            colliders.push(new THREE.Box3(new THREE.Vector3(-50, 0, 49.35), new THREE.Vector3(-1.5, 4.2, 49.65)));
+
+            // Right segment: x from 1.5 to 50 (width = 48.5m, center = 25.75)
+            const rightBackWall = new THREE.Mesh(new THREE.PlaneGeometry(48.5, 4.2), backWallMat);
+            rightBackWall.position.set(25.75, 2.1, 49.5);
+            rightBackWall.rotation.y = Math.PI;
+            scene.add(rightBackWall);
+            interactableMeshes.push(rightBackWall);
+            colliders.push(new THREE.Box3(new THREE.Vector3(1.5, 0, 49.35), new THREE.Vector3(50, 4.2, 49.65)));
+
+            // 2. Portal Archway Frame at z = 49.5 (width 3.0m, height 4.2m)
+            // Top lintel
+            const portalLintel = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.4, 0.3), darkMetalMat);
+            portalLintel.position.set(0, 4.0, 49.5);
+            scene.add(portalLintel);
+            interactableMeshes.push(portalLintel);
+
+            // Left & Right portal jamb pillars
+            const leftJamb = new THREE.Mesh(new THREE.BoxGeometry(0.25, 4.2, 0.3), darkMetalMat);
+            leftJamb.position.set(-1.625, 2.1, 49.5);
+            scene.add(leftJamb);
+            interactableMeshes.push(leftJamb);
+
+            const rightJamb = new THREE.Mesh(new THREE.BoxGeometry(0.25, 4.2, 0.3), darkMetalMat);
+            rightJamb.position.set(1.625, 2.1, 49.5);
+            scene.add(rightJamb);
+            interactableMeshes.push(rightJamb);
+
+            // Suspended Exit Sign above Entrance Portal (Facing the platform)
+            const entranceSignGeo = new THREE.BoxGeometry(1.8, 0.45, 0.08);
+            const signMatFront = new THREE.MeshBasicMaterial({ map: exitSignEntranceTex });
+            const signMatBack = new THREE.MeshBasicMaterial({ color: 0x111315 });
+            const entranceSignMaterials = [signMatBack, signMatBack, signMatBack, signMatBack, signMatBack, signMatFront];
+            const entranceSign = new THREE.Mesh(entranceSignGeo, entranceSignMaterials);
+            entranceSign.position.set(0, 3.65, 49.38);
+            scene.add(entranceSign);
+            interactableMeshes.push(entranceSign);
+
+            // Subtle green illumination from entrance exit sign
+            const exitLight = new THREE.PointLight(0x00e676, 0.65, 5);
+            exitLight.position.set(0, 3.65, 49.1);
+            scene.add(exitLight);
+
+            // 3. Stairs Steps (Width = 3.0m, rising from y = 0.0 at z = 49.5 to platform ceiling height y = 4.2 at z = 57.5)
+            const numSteps = 21;
+            const stairHeight = 4.2;
+            const stairDepth = 8.0;
+            const stepH = stairHeight / numSteps; // 0.2m per step
+            const stepD = stairDepth / numSteps;  // 0.38095m tread depth
+            const stairWidth = 3.0;
+
+            const yellowNosingMat = new THREE.MeshBasicMaterial({ color: 0xf5c518 });
+
+            for (let i = 0; i < numSteps; i++) {
+                const currentHeight = (i + 1) * stepH;
+                const stepZ = 49.5 + (i + 0.5) * stepD;
+
+                // Solid step box from y = 0 up to current step tread
+                const stepMesh = new THREE.Mesh(new THREE.BoxGeometry(stairWidth, currentHeight, stepD), stairMat);
+                stepMesh.position.set(0, currentHeight / 2, stepZ);
+                scene.add(stepMesh);
+                interactableMeshes.push(stepMesh);
+
+                // High-vis yellow safety strip along tread front edge
+                const yellowStripe = new THREE.Mesh(new THREE.PlaneGeometry(stairWidth - 0.04, 0.06), yellowNosingMat);
+                yellowStripe.rotation.x = -Math.PI / 2;
+                yellowStripe.position.set(0, currentHeight + 0.002, 49.5 + i * stepD + 0.035);
+                scene.add(yellowStripe);
+            }
+
+            // 4. Upper Landing Floor (z: 57.5 to 62.5, width: 3.0m, elevation y: 4.2m)
+            const landingFloor = new THREE.Mesh(new THREE.BoxGeometry(stairWidth, 4.2, 5.0), stairMat);
+            landingFloor.position.set(0, 2.1, 60.0);
+            scene.add(landingFloor);
+            interactableMeshes.push(landingFloor);
+
+            // Yellow caution stripe at landing transition (z = 57.5)
+            const landingStripe = new THREE.Mesh(new THREE.PlaneGeometry(stairWidth - 0.04, 0.08), yellowNosingMat);
+            landingStripe.rotation.x = -Math.PI / 2;
+            landingStripe.position.set(0, 4.202, 57.54);
+            scene.add(landingStripe);
+
+            // 5. Stairwell Enclosure Walls
+            // Left Wall (x = -1.5, length = 13.0m from z = 49.5 to 62.5, height = 8.5m)
+            const leftStairWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, 8.5, 13.0), wallMat);
+            leftStairWall.position.set(-1.575, 4.25, 56.0);
+            scene.add(leftStairWall);
+            interactableMeshes.push(leftStairWall);
+            colliders.push(new THREE.Box3(new THREE.Vector3(-1.7, 0, 49.4), new THREE.Vector3(-1.45, 8.6, 62.6)));
+
+            // Right Wall (x = 1.5, length = 13.0m from z = 49.5 to 62.5, height = 8.5m)
+            const rightStairWall = new THREE.Mesh(new THREE.BoxGeometry(0.15, 8.5, 13.0), wallMat);
+            rightStairWall.position.set(1.575, 4.25, 56.0);
+            scene.add(rightStairWall);
+            interactableMeshes.push(rightStairWall);
+            colliders.push(new THREE.Box3(new THREE.Vector3(1.45, 0, 49.4), new THREE.Vector3(1.7, 8.6, 62.6)));
+
+            // 6. Upper Landing End Exit Wall & Double Exit Doors (at z = 62.5, y from 4.2 to 8.5)
+            const exitWall = new THREE.Mesh(new THREE.BoxGeometry(3.3, 4.3, 0.2), backWallMat);
+            exitWall.position.set(0, 6.35, 62.6);
+            scene.add(exitWall);
+            interactableMeshes.push(exitWall);
+            colliders.push(new THREE.Box3(new THREE.Vector3(-1.6, 4.0, 62.45), new THREE.Vector3(1.6, 8.6, 62.8)));
+
+            // Double Exit Doors mounted on the exit wall
+            const doubleDoors = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 2.8), doorMat);
+            doubleDoors.position.set(0, 5.6, 62.48);
+            doubleDoors.rotation.y = Math.PI;
+            scene.add(doubleDoors);
+            interactableMeshes.push(doubleDoors);
+
+            // Upper Exit Sign above the Doors
+            const upperSign = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.4, 0.08), [
+                signMatBack, signMatBack, signMatBack, signMatBack,
+                new THREE.MeshBasicMaterial({ map: exitSignUpperTex }),
+                signMatBack
+            ]);
+            upperSign.position.set(0, 7.3, 62.45);
+            scene.add(upperSign);
+            interactableMeshes.push(upperSign);
+
+            // 7. Ceilings (Headroom = 4.2m everywhere)
+            // Sloped ceiling over stairs: from (z: 49.5, y: 4.2) to (z: 57.5, y: 8.4)
+            const stairCeilLen = Math.hypot(stairDepth, stairHeight); // ~9.035m
+            const stairCeilAngle = Math.atan2(stairHeight, stairDepth);
+            const stairCeiling = new THREE.Mesh(new THREE.PlaneGeometry(stairWidth, stairCeilLen), ceilingMat);
+            stairCeiling.position.set(0, 6.3, 53.5);
+            stairCeiling.rotation.x = Math.PI / 2 - stairCeilAngle;
+            scene.add(stairCeiling);
+            interactableMeshes.push(stairCeiling);
+
+            // Flat ceiling over upper landing at y = 8.4 (z: 57.5 to 62.5)
+            const landingCeiling = new THREE.Mesh(new THREE.PlaneGeometry(stairWidth, 5.0), ceilingMat);
+            landingCeiling.position.set(0, 8.4, 60.0);
+            landingCeiling.rotation.x = Math.PI / 2;
+            scene.add(landingCeiling);
+            interactableMeshes.push(landingCeiling);
+
+            // 8. Stainless Steel Handrails (mounted on left and right walls)
+            [-1.42, 1.42].forEach((rx) => {
+                // Sloping rail along stairs (waist height 0.9m above step surface)
+                const railLength = Math.hypot(stairDepth, stairHeight);
+                const railGeo = new THREE.CylinderGeometry(0.025, 0.025, railLength, 8);
+                const railMesh = new THREE.Mesh(railGeo, metalMat);
+                railMesh.position.set(rx, 3.0, 53.5);
+                railMesh.rotation.x = Math.PI / 2 - stairCeilAngle;
+                scene.add(railMesh);
+                interactableMeshes.push(railMesh);
+
+                // Horizontal rail on upper landing
+                const landingRailGeo = new THREE.CylinderGeometry(0.025, 0.025, 4.9, 8);
+                const landingRailMesh = new THREE.Mesh(landingRailGeo, metalMat);
+                landingRailMesh.position.set(rx, 5.1, 59.95);
+                landingRailMesh.rotation.x = Math.PI / 2;
+                scene.add(landingRailMesh);
+                interactableMeshes.push(landingRailMesh);
+
+                // Vertical rail stanchions / posts
+                for (let sz = 49.8; sz <= 57.2; sz += 1.8) {
+                    const postGroundY = ((sz - 49.5) / 8.0) * 4.2;
+                    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.9, 8), metalMat);
+                    post.position.set(rx, postGroundY + 0.45, sz);
+                    scene.add(post);
+                    interactableMeshes.push(post);
+                }
+                for (let lz = 58.0; lz <= 62.0; lz += 2.0) {
+                    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.9, 8), metalMat);
+                    post.position.set(rx, 4.2 + 0.45, lz);
+                    scene.add(post);
+                    interactableMeshes.push(post);
+                }
+            });
+
+            // 9. Stairwell Overhead Lighting (Warm retro fluorescent lights)
+            // Light 1: Mid-stairs
+            //const stairLight = new THREE.PointLight(0xfffaed, 0.85, 12);
+            const stairLight = new THREE.PointLight(0xfffaed, 0.001, 12);
+            stairLight.position.set(0, 6.2, 53.5);
+            scene.add(stairLight);
+
+            const lampFixture1 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 1.2), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+            lampFixture1.position.set(0, 6.25, 53.5);
+            lampFixture1.rotation.x = -stairCeilAngle;
+            scene.add(lampFixture1);
+
+            // Light 2: Upper landing (Faulty fluorescent light)
+            landingLight = new THREE.PointLight(0xfffaed, baseLandingIntensity, 12);
+            landingLight.position.set(0, 8.2, 60.0);
+            scene.add(landingLight);
+
+            landingFixtureMat = new THREE.MeshBasicMaterial({ color: 0xfffaed, transparent: true, opacity: 0.9 });
+            const lampFixture2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 1.2), landingFixtureMat);
+            lampFixture2.position.set(0, 8.35, 60.0);
+            scene.add(lampFixture2);
+        }
+
         function initGunSound() {
             try {
                 fetch('sound/gun_sound.mp3')
@@ -650,7 +1072,7 @@
 
             scene.add(controls.getObject());
             //controls.getObject().position.set(0, PLAYER_HEIGHT, 10);
-            controls.getObject().position.set(0, PLAYER_HEIGHT, 47.5);
+            controls.getObject().position.set(0, 5.8, 61.5);
 
             createLevel();
             initGunSound();
@@ -741,13 +1163,8 @@
             interactableMeshes.push(frontWall);
             colliders.push(new THREE.Box3().setFromObject(frontWall));
 
-            // Back Outer Wall
-            const backWall = new THREE.Mesh(new THREE.PlaneGeometry(100, 4.2), backWallMat);
-            backWall.position.set(0, 2.1, 49.5);
-            backWall.rotation.y = Math.PI;
-            scene.add(backWall);
-            interactableMeshes.push(backWall);
-            colliders.push(new THREE.Box3().setFromObject(backWall));
+            // Back Wall with 3.0m Wide Exit and Stairs to Platform Ceiling Height
+            createBackExitStairs(scene, interactableMeshes, colliders);
         }
 
         function loadRifleModel() {
@@ -1191,6 +1608,50 @@
                 }
             }
 
+            // Upper Landing Light (Faulty fluorescent tube with irregular flickers, micro-stutters, and electrical cutouts)
+            if (landingLight) {
+                landingFlickerTimer -= delta;
+                if (landingFlickerTimer <= 0) {
+                    const r = Math.random();
+                    if (r < 0.35) {
+                        // Rapid stutter burst (50ms - 180ms)
+                        landingFlickerMode = 3;
+                        landingFlickerTimer = 0.05 + Math.random() * 0.15;
+                    } else if (r < 0.55) {
+                        // Sudden blackout drop / ballast cut (60ms - 260ms)
+                        landingFlickerMode = 2;
+                        landingFlickerTimer = 0.06 + Math.random() * 0.20;
+                    } else if (r < 0.70) {
+                        // Weak struggling electrical buzz (100ms - 300ms)
+                        landingFlickerMode = 1;
+                        landingFlickerTimer = 0.10 + Math.random() * 0.20;
+                    } else {
+                        // Steady lit interval before next glitch (0.25s - 1.2s)
+                        landingFlickerMode = 0;
+                        landingFlickerTimer = 0.25 + Math.random() * 0.95;
+                    }
+                }
+
+                let currentLandingIntensity = baseLandingIntensity;
+                if (landingFlickerMode === 2) {
+                    currentLandingIntensity = 0.01; // Deep electrical cutout
+                } else if (landingFlickerMode === 3) {
+                    // Rapid jittering stutter
+                    currentLandingIntensity = Math.random() > 0.4 ? baseLandingIntensity * (0.75 + Math.random() * 0.4) : 0.05;
+                } else if (landingFlickerMode === 1) {
+                    // Dim struggling buzz
+                    currentLandingIntensity = baseLandingIntensity * (0.18 + Math.random() * 0.25);
+                } else {
+                    // Mostly steady with subtle voltage ripple
+                    currentLandingIntensity = baseLandingIntensity * (0.92 + Math.sin(time * 0.04) * 0.08);
+                }
+
+                landingLight.intensity = currentLandingIntensity;
+                if (landingFixtureMat) {
+                    landingFixtureMat.opacity = Math.max(0.12, Math.min(1.0, (currentLandingIntensity / baseLandingIntensity) * 0.85 + 0.15));
+                }
+            }
+
             updateEnemy(delta, camera);
 
             // Update Time Passed (minutes:seconds since game starts, stops when player dies)
@@ -1208,7 +1669,8 @@
             if (window.isDead) {
                 // Death camera animation
                 camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, Math.PI / 2, delta * 3);
-                camera.position.y = THREE.MathUtils.lerp(camera.position.y, 0.2, delta * 5);
+                const groundY = getGroundHeight(camera.position.x, camera.position.z);
+                camera.position.y = THREE.MathUtils.lerp(camera.position.y, groundY + 0.2, delta * 5);
             } else if (controls.isLocked) {
 
                 // Handle Muzzle Flash Timer
@@ -1263,11 +1725,18 @@
                     velocity.z = 0;
                 }
 
-                // Y-Axis Jump / Gravity physics
+                // Y-Axis Jump / Gravity / Stairs physics
                 camPos.y += velocity.y * delta;
-                if (camPos.y < PLAYER_HEIGHT) {
+                const groundY = getGroundHeight(camPos.x, camPos.z);
+                const targetCamY = groundY + PLAYER_HEIGHT;
+
+                // Step-down snapping when descending so player does not float into air
+                if (canJump && velocity.y <= 0 && camPos.y > targetCamY && (camPos.y - targetCamY) <= 0.45) {
+                    camPos.y = targetCamY;
                     velocity.y = 0;
-                    camPos.y = PLAYER_HEIGHT;
+                } else if (camPos.y <= targetCamY) {
+                    velocity.y = 0;
+                    camPos.y = targetCamY;
                     canJump = true;
                 }
 
