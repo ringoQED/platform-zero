@@ -864,8 +864,8 @@ class EnemyManager {
 
             const spawnedPositions = [origPos];
 
-            // 2 & 3. Clone 2 more enemies from the original one placed at random positions
-            for (let i = 0; i < 2; i++) {
+            // 2 & 3. Clone 4 more enemies from the original one placed at random positions
+            for (let i = 0; i < 4; i++) {
                 const clonedCrystal = this.cloneCrystalModel(baseCrystal);
                 const randomPos = this.getRandomSpawnPosition(spawnedPositions);
                 spawnedPositions.push(randomPos);

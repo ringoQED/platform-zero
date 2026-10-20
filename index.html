@@ -1489,7 +1489,7 @@
 
                 // Check if hit enemy crystal
                 if (window.enemyManager && window.enemyManager.isEnemyObject(hit.object)) {
-                    window.enemyManager.takeDamage(50, hit.point, hit.object);
+                    window.enemyManager.takeDamage(40, hit.point, hit.object);
                     spawnLaserImpactSparks(hit.point, hitNormal || new THREE.Vector3(0, 1, 0));
                 } else {
                     spawnLaserImpactSparks(hit.point, hitNormal || new THREE.Vector3(0, 1, 0));
