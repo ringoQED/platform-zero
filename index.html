@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Platform Zero</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -176,6 +176,40 @@
             </div>
         </div>
     </div>
+
+    <!-- Mobile Touch Controls Layer (Option A: Virtual Joystick, Combined Look & Fire, Jump) -->
+    <div id="mobile-controls-layer" class="mobile-hidden">
+        <!-- Floating Virtual Joystick Zone (Bottom-Left) -->
+        <div id="mobile-joystick-zone">
+            <div id="joystick-base">
+                <div id="joystick-thumb"></div>
+            </div>
+        </div>
+
+        <!-- Mobile Jump Button (Right Side) -->
+        <button id="mobile-jump-btn" aria-label="Jump">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#00e5ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="18 15 12 9 6 15"></polyline>
+            </svg>
+            <span>JUMP</span>
+        </button>
+
+        <!-- Combined Look & Fire Touch Zone (Right Screen Half) -->
+        <div id="mobile-look-fire-zone">
+            <div id="mobile-fire-button">
+                <svg viewBox="0 0 60 60" width="46" height="46" fill="none" stroke="#00e5ff">
+                    <circle cx="30" cy="30" r="22" stroke-width="2" stroke-dasharray="8,4" opacity="0.8"/>
+                    <circle cx="30" cy="30" r="10" stroke-width="1.8"/>
+                    <line x1="30" y1="4" x2="30" y2="16" stroke-width="2.5"/>
+                    <line x1="30" y1="44" x2="30" y2="56" stroke-width="2.5"/>
+                    <line x1="4" y1="30" x2="16" y2="30" stroke-width="2.5"/>
+                    <line x1="44" y1="30" x2="56" y2="30" stroke-width="2.5"/>
+                    <circle cx="30" cy="30" r="3.5" fill="#ff3366" stroke="none"/>
+                </svg>
+                <span>AIM / FIRE</span>
+            </div>
+        </div>
+    </div>
     <div id="game-over">
         <h1>Game Over!</h1>
         <button onclick="location.reload()">Fight Again!</button>
@@ -229,26 +263,42 @@
         function updatePlayerHealthHUD() {
             const fill = document.getElementById('hud-health-bar-fill');
             const pct = document.getElementById('hud-health-pct');
-            const hp = Math.max(0, window.playerHealth);
-            if (fill) fill.style.width = hp + '%';
+            const hp = Math.max(0, Math.round(window.playerHealth));
+            if (fill) {
+                if (hp === 0) {
+                    fill.style.transition = 'none';
+                }
+                fill.style.width = hp + '%';
+            }
             if (pct) pct.textContent = hp + '%';
         }
 
         window.damagePlayer = function (amount) {
             if (window.isDead) return;
-            window.playerHealth -= amount;
+            window.playerHealth = Math.max(0, window.playerHealth - amount);
+            updatePlayerHealthHUD();
+
             if (window.playerHealth <= 0) {
                 window.playerHealth = 0;
                 window.isDead = true;
                 stopTimePassedCounter();
                 playManDieSound();
-                controls.unlock();
-                document.getElementById('game-over').style.display = 'block';
-                document.getElementById('blocker').style.display = 'none';
+                if (controls && controls.isLocked) {
+                    try {
+                        controls.unlock();
+                    } catch (e) {
+                        console.warn('Controls unlock error:', e);
+                    }
+                }
+                const gameOverEl = document.getElementById('game-over');
+                if (gameOverEl) gameOverEl.style.display = 'block';
+                const blockerEl = document.getElementById('blocker');
+                if (blockerEl) blockerEl.style.display = 'none';
+                const mobileControls = document.getElementById('mobile-controls-layer');
+                if (mobileControls) mobileControls.classList.add('mobile-hidden');
             } else {
                 playManHurtSound();
             }
-            updatePlayerHealthHUD();
         };
 
         // Player Motion state
@@ -258,6 +308,10 @@
         let moveRight = false;
         let canJump = false;
         let isRunning = false;
+
+        // Mobile Device Detection & Touch Control State
+        const isMobile = ('ontouchstart' in window || navigator.maxTouchPoints > 0 || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
+        const mobileJoystickInput = { active: false, x: 0, y: 0, magnitude: 0 };
 
         const velocity = new THREE.Vector3();
         let prevTime = performance.now();
@@ -1006,7 +1060,7 @@
                     source.start(0);
                 } else {
                     const audio = new Audio('sound/man_die.mp3');
-                    audio.volume = 2.0;
+                    audio.volume = 1.0;
                     audio.play().catch(() => { });
                 }
             } catch (e) {
@@ -1045,18 +1099,36 @@
                     audioCtx.resume();
                 }
                 playBgMusic();
-                controls.lock();
+
+                if (isMobile) {
+                    if (splashContainer) splashContainer.style.opacity = '0';
+                    setTimeout(() => {
+                        blocker.style.display = 'none';
+                        const mobileControls = document.getElementById('mobile-controls-layer');
+                        if (mobileControls) mobileControls.classList.remove('mobile-hidden');
+                    }, 200);
+                } else {
+                    controls.lock();
+                }
             }
 
             if (enterButton) {
-                enterButton.addEventListener('click', function (e) {
+                const onEnter = function (e) {
                     e.stopPropagation();
+                    e.preventDefault();
                     startGame();
-                });
+                };
+                enterButton.addEventListener('click', onEnter);
+                enterButton.addEventListener('touchend', onEnter, { passive: false });
             }
 
             if (splashContainer) {
-                splashContainer.addEventListener('click', startGame);
+                const onSplash = function (e) {
+                    e.preventDefault();
+                    startGame();
+                };
+                splashContainer.addEventListener('click', onSplash);
+                splashContainer.addEventListener('touchend', onSplash, { passive: false });
             }
 
             controls.addEventListener('lock', function () {
@@ -1083,6 +1155,7 @@
             loadEscalators();
             setupLighting();
             setupInput();
+            setupMobileControls();
 
             window.addEventListener('resize', onWindowResize);
 
@@ -1441,12 +1514,165 @@
             document.addEventListener('keydown', onKeyDown);
             document.addEventListener('keyup', onKeyUp);
 
-            // Left Mouse Click triggers rifle laser firing
+            // Left Mouse Click triggers rifle laser firing (desktop)
             document.addEventListener('mousedown', function (event) {
                 if (controls.isLocked && event.button === 0) {
                     shootRifle();
                 }
             });
+        }
+
+        function setupMobileControls() {
+            if (!isMobile) return;
+
+            // 1. Floating Virtual Joystick on Bottom-Left
+            const joystickZone = document.getElementById('mobile-joystick-zone');
+            const joystickBase = document.getElementById('joystick-base');
+            const joystickThumb = document.getElementById('joystick-thumb');
+
+            if (joystickZone && joystickBase && joystickThumb) {
+                let touchId = null;
+                let baseCenter = { x: 0, y: 0 };
+                const maxRadius = 45;
+
+                function updateBaseCenter() {
+                    const rect = joystickBase.getBoundingClientRect();
+                    baseCenter = {
+                        x: rect.left + rect.width / 2,
+                        y: rect.top + rect.height / 2
+                    };
+                }
+
+                joystickZone.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    if (touchId !== null) return;
+                    const touch = e.changedTouches[0];
+                    touchId = touch.identifier;
+                    updateBaseCenter();
+                    handleMove(touch.clientX, touch.clientY);
+                }, { passive: false });
+
+                joystickZone.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        const touch = e.changedTouches[i];
+                        if (touch.identifier === touchId) {
+                            handleMove(touch.clientX, touch.clientY);
+                            break;
+                        }
+                    }
+                }, { passive: false });
+
+                const endJoystick = (e) => {
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        if (e.changedTouches[i].identifier === touchId) {
+                            touchId = null;
+                            mobileJoystickInput.active = false;
+                            mobileJoystickInput.x = 0;
+                            mobileJoystickInput.y = 0;
+                            mobileJoystickInput.magnitude = 0;
+                            joystickThumb.style.transform = 'translate(0px, 0px)';
+                            break;
+                        }
+                    }
+                };
+
+                joystickZone.addEventListener('touchend', endJoystick, { passive: false });
+                joystickZone.addEventListener('touchcancel', endJoystick, { passive: false });
+
+                function handleMove(clientX, clientY) {
+                    const dx = clientX - baseCenter.x;
+                    const dy = clientY - baseCenter.y;
+                    const dist = Math.hypot(dx, dy);
+                    const angle = Math.atan2(dy, dx);
+
+                    const clampedDist = Math.min(dist, maxRadius);
+                    const thumbX = Math.cos(angle) * clampedDist;
+                    const thumbY = Math.sin(angle) * clampedDist;
+
+                    joystickThumb.style.transform = `translate(${thumbX}px, ${thumbY}px)`;
+
+                    const normX = thumbX / maxRadius;
+                    const normY = -thumbY / maxRadius; // invert Y so moving thumb up walks forward
+
+                    mobileJoystickInput.active = true;
+                    mobileJoystickInput.x = normX;
+                    mobileJoystickInput.y = normY;
+                    mobileJoystickInput.magnitude = clampedDist / maxRadius;
+                }
+            }
+
+            // 2. Combined Look & Fire UI Element (Right side of screen)
+            // Player manually fires the rifle by touching/pressing the element, and dragging rotates the view.
+            const lookFireZone = document.getElementById('mobile-look-fire-zone');
+            const fireBtn = document.getElementById('mobile-fire-button');
+
+            if (lookFireZone) {
+                let primaryLookTouchId = null;
+                let prevLookPos = { x: 0, y: 0 };
+                const lookSensitivity = 0.0035;
+
+                lookFireZone.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        const touch = e.changedTouches[i];
+
+                        // Player manually triggers rifle fire on touch!
+                        shootRifle();
+                        if (fireBtn) fireBtn.classList.add('active');
+
+                        // If not currently tracking a look touch, designate this touch for camera rotation
+                        if (primaryLookTouchId === null) {
+                            primaryLookTouchId = touch.identifier;
+                            prevLookPos = { x: touch.clientX, y: touch.clientY };
+                        }
+                    }
+                }, { passive: false });
+
+                lookFireZone.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        const touch = e.changedTouches[i];
+                        if (touch.identifier === primaryLookTouchId) {
+                            const deltaX = touch.clientX - prevLookPos.x;
+                            const deltaY = touch.clientY - prevLookPos.y;
+                            prevLookPos = { x: touch.clientX, y: touch.clientY };
+
+                            // Rotate camera yaw (left/right) and pitch (up/down)
+                            camera.rotation.y -= deltaX * lookSensitivity;
+                            camera.rotation.x = Math.max(-1.45, Math.min(1.45, camera.rotation.x - deltaY * lookSensitivity));
+                            break;
+                        }
+                    }
+                }, { passive: false });
+
+                const endLookFire = (e) => {
+                    for (let i = 0; i < e.changedTouches.length; i++) {
+                        const touch = e.changedTouches[i];
+                        if (touch.identifier === primaryLookTouchId) {
+                            primaryLookTouchId = null;
+                            if (fireBtn) fireBtn.classList.remove('active');
+                            break;
+                        }
+                    }
+                };
+
+                lookFireZone.addEventListener('touchend', endLookFire, { passive: false });
+                lookFireZone.addEventListener('touchcancel', endLookFire, { passive: false });
+            }
+
+            // 3. Jump Button
+            const jumpBtn = document.getElementById('mobile-jump-btn');
+            if (jumpBtn) {
+                jumpBtn.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (canJump) {
+                        velocity.y += JUMP_VELOCITY;
+                        canJump = false;
+                    }
+                }, { passive: false });
+            }
         }
 
         function shootRifle() {
@@ -1671,7 +1897,7 @@
                 camera.rotation.z = THREE.MathUtils.lerp(camera.rotation.z, Math.PI / 2, delta * 3);
                 const groundY = getGroundHeight(camera.position.x, camera.position.z);
                 camera.position.y = THREE.MathUtils.lerp(camera.position.y, groundY + 0.2, delta * 5);
-            } else if (controls.isLocked) {
+            } else if (controls.isLocked || (isMobile && window.gameStarted)) {
 
                 // Handle Muzzle Flash Timer
                 if (muzzleFlashTimer > 0) {
@@ -1698,11 +1924,21 @@
                 if (moveRight) moveDir.add(right);
                 if (moveLeft) moveDir.sub(right);
 
+                // Add mobile virtual joystick directional vector
+                if (mobileJoystickInput.active && mobileJoystickInput.magnitude > 0.05) {
+                    moveDir.addScaledVector(forward, mobileJoystickInput.y);
+                    moveDir.addScaledVector(right, mobileJoystickInput.x);
+                }
+
                 if (moveDir.lengthSq() > 0) {
                     moveDir.normalize();
                 }
 
-                const targetSpeed = (moveForward || moveBackward || moveLeft || moveRight) ? (isRunning ? RUN_SPEED : WALK_SPEED) : 0;
+                const isMoving = (moveForward || moveBackward || moveLeft || moveRight) ||
+                                 (mobileJoystickInput.active && mobileJoystickInput.magnitude > 0.05);
+
+                const isMobileRunning = mobileJoystickInput.active && mobileJoystickInput.magnitude > 0.85;
+                const targetSpeed = isMoving ? ((isRunning || isMobileRunning) ? RUN_SPEED : WALK_SPEED) : 0;
 
                 const accel = 14.0;
                 velocity.x += (moveDir.x * targetSpeed - velocity.x) * Math.min(delta * accel, 1.0);
