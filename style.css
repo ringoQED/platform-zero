@@ -10,6 +10,10 @@ body, html {
     overflow: hidden;
     background-color: #000;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
 }
 #blocker {
     position: absolute;
@@ -374,3 +378,179 @@ body, html {
 #game-over button:hover {
     background: #ff6666;
 }
+
+/* ========================================================
+   MOBILE TOUCH CONTROLS
+   ======================================================== */
+#mobile-controls-layer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 15;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+}
+
+.mobile-hidden {
+    display: none !important;
+}
+
+/* Virtual Joystick Zone (Bottom-Left) */
+#mobile-joystick-zone {
+    position: absolute;
+    bottom: 25px;
+    left: 25px;
+    width: 150px;
+    height: 150px;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+#joystick-base {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 120px;
+    height: 120px;
+    margin-left: -60px;
+    margin-top: -60px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0, 229, 255, 0.08) 0%, rgba(0, 20, 35, 0.45) 80%);
+    border: 2px solid rgba(0, 229, 255, 0.5);
+    box-shadow: 0 0 16px rgba(0, 229, 255, 0.25), inset 0 0 10px rgba(0, 229, 255, 0.15);
+    pointer-events: none;
+}
+
+#joystick-thumb {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 48px;
+    height: 48px;
+    margin-left: -24px;
+    margin-top: -24px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #00f0ff 0%, #0099bb 100%);
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 14px #00e5ff, inset 0 0 8px rgba(255, 255, 255, 0.6);
+    pointer-events: none;
+    will-change: transform;
+}
+
+/* Combined Look & Fire Touch Zone (Right half of screen) */
+#mobile-look-fire-zone {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 52vw;
+    height: 100%;
+    pointer-events: auto;
+    touch-action: none;
+}
+
+/* Fire & Aim Button Visual Element (Right Thumb Area) */
+#mobile-fire-button {
+    position: absolute;
+    bottom: 26px;
+    right: 28px;
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 51, 102, 0.15) 0%, rgba(0, 20, 35, 0.70) 80%);
+    border: 2.5px solid #00e5ff;
+    box-shadow: 0 0 18px rgba(0, 229, 255, 0.45), inset 0 0 12px rgba(255, 51, 102, 0.25);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #00e5ff;
+    font-family: 'Orbitron', monospace, sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    pointer-events: none; /* Touches handled by look-fire-zone */
+    transition: transform 0.08s ease, border-color 0.08s ease, box-shadow 0.08s ease;
+}
+
+#mobile-fire-button span {
+    margin-top: -2px;
+    text-shadow: 0 0 6px #00e5ff;
+}
+
+#mobile-fire-button.active {
+    transform: scale(0.92);
+    border-color: #ff3366;
+    box-shadow: 0 0 26px rgba(255, 51, 102, 0.9), inset 0 0 16px rgba(255, 51, 102, 0.5);
+    color: #ff3366;
+}
+
+#mobile-fire-button.active span {
+    text-shadow: 0 0 8px #ff3366;
+}
+
+/* Mobile Jump Button */
+#mobile-jump-btn {
+    position: absolute;
+    bottom: 130px;
+    right: 38px;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(0, 229, 255, 0.18) 0%, rgba(0, 20, 35, 0.70) 80%);
+    border: 2px solid #00e5ff;
+    box-shadow: 0 0 14px rgba(0, 229, 255, 0.35);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #00e5ff;
+    font-family: 'Orbitron', monospace, sans-serif;
+    font-size: 9px;
+    font-weight: 700;
+    pointer-events: auto;
+    outline: none;
+    touch-action: none;
+    transition: transform 0.08s ease, background 0.08s ease;
+}
+
+#mobile-jump-btn:active {
+    transform: scale(0.92);
+    background: rgba(0, 229, 255, 0.35);
+    box-shadow: 0 0 20px #00e5ff;
+}
+
+#mobile-jump-btn span {
+    margin-top: -2px;
+    text-shadow: 0 0 6px #00e5ff;
+}
+
+/* Responsive HUD Scaling for Mobile Displays */
+@media (max-width: 900px) or (max-height: 520px) {
+    #hud-telemetry-left,
+    #hud-telemetry-right {
+        display: none !important;
+    }
+    #hud-time-panel {
+        transform: scale(0.72);
+        transform-origin: top left;
+        top: 8px;
+        left: 8px;
+    }
+    #hud-health-panel {
+        transform: scale(0.68);
+        transform-origin: bottom left;
+        bottom: 185px;
+        left: 8px;
+    }
+    #hud-energy-panel {
+        transform: scale(0.68);
+        transform-origin: bottom right;
+        bottom: 185px;
+        right: 8px;
+    }
+}
+
