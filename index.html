@@ -70,6 +70,10 @@
                 </g>
             </svg>
         </div>
+        <!-- Center: CHARGING Alert (Right beneath Aiming Crosshair) -->
+        <div id="hud-charging-alert">
+            <span id="hud-charging-text">Charging ...</span>
+        </div>
 
         <!-- 3. Left Side Holographic Telemetry Feed -->
         <div id="hud-telemetry-left" class="hud-telemetry">
@@ -110,7 +114,12 @@
             </div>
         </div>
 
-        <!-- 5. Lower-Left: HEALTH Panel -->
+        <!-- 5. Lower-Left: KILLS Counter (Just above Health Bar) -->
+        <div id="hud-kills-panel">
+            <span id="hud-kills-text">Kills : 0 | 5</span>
+        </div>
+
+        <!-- 6. Lower-Left: HEALTH Panel -->
         <div id="hud-health-panel" class="hud-panel">
             <svg class="hud-panel-svg" viewBox="0 0 320 82" preserveAspectRatio="none">
                 <path d="M 20 2 L 300 2 L 318 20 L 318 62 L 300 80 L 20 80 L 2 62 L 2 20 Z" fill="rgba(0, 18, 30, 0.35)"
@@ -153,14 +162,9 @@
             </svg>
             <div class="hud-panel-content hud-energy-content">
                 <div class="hud-energy-header">
-                    <span class="hud-energy-title">LASER ENERGY: 100%</span>
+                    <span id="hud-energy-title" class="hud-energy-title">LASER ENERGY: 100%</span>
                 </div>
                 <div class="hud-energy-meter">
-                    <div class="energy-segment"></div>
-                    <div class="energy-segment"></div>
-                    <div class="energy-segment"></div>
-                    <div class="energy-segment"></div>
-                    <div class="energy-segment"></div>
                     <div class="energy-segment"></div>
                     <div class="energy-segment"></div>
                     <div class="energy-segment"></div>
@@ -244,6 +248,63 @@
 
         // Enemy HP removed from HUD per instructions
         window.updateEnemyHealthUI = function () { };
+
+        // Enemy Kills Counter HUD ("Kills : { killed } | { total }")
+        window.updateEnemyKillsHUD = function (killed, total) {
+            const killsEl = document.getElementById('hud-kills-text');
+            if (killsEl) {
+                killsEl.textContent = `Kills : ${killed} | ${total}`;
+            }
+        };
+
+        // Rifle Laser Energy & Charging state (every 2 shots requires 1 sec recharge)
+        let laserEnergy = 100;
+        let shotsSinceRecharge = 0;
+        let isRifleCharging = false;
+        let rifleChargingTimeout = null;
+
+        function updateLaserEnergyUI() {
+            const titleEl = document.getElementById('hud-energy-title') || document.querySelector('.hud-energy-title');
+            if (titleEl) {
+                titleEl.textContent = `LASER ENERGY: ${laserEnergy}%`;
+                if (laserEnergy === 0) {
+                    titleEl.style.color = '#ff3344';
+                    titleEl.style.textShadow = '0 0 8px #ff3344';
+                } else {
+                    titleEl.style.color = '';
+                    titleEl.style.textShadow = '';
+                }
+            }
+            const segments = document.querySelectorAll('.energy-segment');
+            if (segments.length > 0) {
+                const activeCount = Math.round(segments.length * (laserEnergy / 100));
+                segments.forEach((seg, index) => {
+                    if (index < activeCount) {
+                        seg.classList.remove('depleted');
+                    } else {
+                        seg.classList.add('depleted');
+                    }
+                });
+            }
+        }
+
+        function triggerRifleRecharge() {
+            isRifleCharging = true;
+            shotsSinceRecharge = 0;
+            const alertEl = document.getElementById('hud-charging-alert');
+            if (alertEl) {
+                alertEl.style.display = 'inline-flex';
+            }
+            if (rifleChargingTimeout) {
+                clearTimeout(rifleChargingTimeout);
+            }
+            rifleChargingTimeout = setTimeout(() => {
+                isRifleCharging = false;
+                if (alertEl) {
+                    alertEl.style.display = 'none';
+                }
+            }, 1000);
+        }
 
         function stopTimePassedCounter() {
             if (isTimeStopped) return;
@@ -1156,6 +1217,7 @@
             setupLighting();
             setupInput();
             setupMobileControls();
+            updateLaserEnergyUI();
 
             window.addEventListener('resize', onWindowResize);
 
@@ -1618,8 +1680,8 @@
                         const touch = e.changedTouches[i];
 
                         // Player manually triggers rifle fire on touch!
-                        shootRifle();
-                        if (fireBtn) fireBtn.classList.add('active');
+                        const shotFired = shootRifle();
+                        if (shotFired && fireBtn) fireBtn.classList.add('active');
 
                         // If not currently tracking a look touch, designate this touch for camera rotation
                         if (primaryLookTouchId === null) {
@@ -1676,6 +1738,14 @@
         }
 
         function shootRifle() {
+            if (window.isDead) return false;
+            // Player cannot fire during 1 sec of recharge, or when laser energy reaches zero
+            if (isRifleCharging || laserEnergy <= 0) return false;
+
+            // Deduct 5% Laser Energy per firing
+            laserEnergy = Math.max(0, laserEnergy - 5);
+            updateLaserEnergyUI();
+
             playGunshotSound();
 
             // Trigger Sci-Fi Rifle Recoil
@@ -1745,6 +1815,14 @@
                 playerLaserBeam.visible = true;
                 playerLaserTimer = 0.08; // 80ms laser beam pulse
             }
+
+            // Every 2 times shooting requires 1 sec to recharge the rifle
+            shotsSinceRecharge++;
+            if (shotsSinceRecharge >= 2) {
+                triggerRifleRecharge();
+            }
+
+            return true;
         }
 
         function spawnLaserImpactSparks(position, normal) {

@@ -178,6 +178,35 @@ body, html {
     filter: drop-shadow(0 0 5px #00e5ff);
 }
 
+/* LOWER-LEFT: KILLS COUNTER (Just above Health Bar) */
+#hud-kills-panel {
+    position: absolute;
+    bottom: 114px;
+    left: 30px;
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    background: rgba(25, 4, 8, 0.65);
+    border: 1.5px solid rgba(255, 34, 51, 0.75);
+    border-radius: 4px;
+    box-shadow: 0 0 14px rgba(255, 34, 51, 0.4), inset 0 0 8px rgba(255, 0, 30, 0.25);
+    pointer-events: none;
+    z-index: 12;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+#hud-kills-text {
+    font-family: 'Orbitron', 'Share Tech Mono', monospace, sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: #ff2233;
+    text-shadow: 0 0 8px rgba(255, 34, 51, 0.8), 0 0 16px rgba(255, 0, 30, 0.5);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
 /* 3. LOWER-LEFT: HEALTH PANEL (320px x 82px) */
 #hud-health-panel {
     bottom: 25px;
@@ -251,6 +280,48 @@ body, html {
     transition: width 0.25s ease-out;
 }
 
+/* CENTER HUD: CHARGING ALERT (Right beneath Aiming Crosshair) */
+#hud-charging-alert {
+    position: absolute;
+    top: calc(50% + 68px);
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    align-items: center;
+    padding: 6px 18px;
+    background: rgba(30, 16, 0, 0.75);
+    border: 1.5px solid rgba(255, 140, 0, 0.85);
+    border-radius: 4px;
+    box-shadow: 0 0 16px rgba(255, 140, 0, 0.5), inset 0 0 10px rgba(255, 110, 0, 0.3);
+    pointer-events: none;
+    z-index: 16;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    animation: chargingAlertPulse 0.5s ease-in-out infinite alternate;
+}
+
+#hud-charging-text {
+    font-family: 'Orbitron', 'Share Tech Mono', monospace, sans-serif;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 1.8px;
+    color: #ff9900;
+    text-shadow: 0 0 8px #ff9900, 0 0 16px rgba(255, 140, 0, 0.7);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+@keyframes chargingAlertPulse {
+    0% {
+        box-shadow: 0 0 12px rgba(255, 140, 0, 0.4), inset 0 0 6px rgba(255, 110, 0, 0.2);
+        border-color: rgba(255, 140, 0, 0.6);
+    }
+    100% {
+        box-shadow: 0 0 22px rgba(255, 160, 0, 0.8), inset 0 0 12px rgba(255, 130, 0, 0.4);
+        border-color: rgba(255, 180, 0, 1);
+    }
+}
+
 /* 4. LOWER-RIGHT: LASER ENERGY PANEL (320px x 82px) */
 #hud-energy-panel {
     bottom: 25px;
@@ -300,6 +371,13 @@ body, html {
     background: #ffc400;
     border-radius: 2px;
     box-shadow: 0 0 8px #ffaa00, 0 0 14px #ff8800, inset 0 0 3px #ffffff;
+    transition: background 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+}
+
+.energy-segment.depleted {
+    background: rgba(255, 170, 0, 0.08);
+    box-shadow: none;
+    opacity: 0.25;
 }
 
 .hud-mission-data {
@@ -540,11 +618,25 @@ body, html {
         top: 8px;
         left: 8px;
     }
+    #hud-kills-panel {
+        bottom: 246px;
+        left: 8px;
+        transform: scale(0.72);
+        transform-origin: bottom left;
+    }
     #hud-health-panel {
         transform: scale(0.68);
         transform-origin: bottom left;
         bottom: 185px;
         left: 8px;
+    }
+    #hud-charging-alert {
+        top: calc(50% + 64px);
+        left: 50%;
+        right: auto;
+        bottom: auto;
+        transform: translateX(-50%) scale(0.85);
+        transform-origin: center top;
     }
     #hud-energy-panel {
         transform: scale(0.68);
