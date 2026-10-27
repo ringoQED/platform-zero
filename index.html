@@ -3,7 +3,8 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Platform Zero</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -192,7 +193,8 @@
 
         <!-- Mobile Jump Button (Right Side) -->
         <button id="mobile-jump-btn" aria-label="Jump">
-            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#00e5ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#00e5ff" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="18 15 12 9 6 15"></polyline>
             </svg>
             <span>JUMP</span>
@@ -202,13 +204,13 @@
         <div id="mobile-look-fire-zone">
             <div id="mobile-fire-button">
                 <svg viewBox="0 0 60 60" width="46" height="46" fill="none" stroke="#00e5ff">
-                    <circle cx="30" cy="30" r="22" stroke-width="2" stroke-dasharray="8,4" opacity="0.8"/>
-                    <circle cx="30" cy="30" r="10" stroke-width="1.8"/>
-                    <line x1="30" y1="4" x2="30" y2="16" stroke-width="2.5"/>
-                    <line x1="30" y1="44" x2="30" y2="56" stroke-width="2.5"/>
-                    <line x1="4" y1="30" x2="16" y2="30" stroke-width="2.5"/>
-                    <line x1="44" y1="30" x2="56" y2="30" stroke-width="2.5"/>
-                    <circle cx="30" cy="30" r="3.5" fill="#ff3366" stroke="none"/>
+                    <circle cx="30" cy="30" r="22" stroke-width="2" stroke-dasharray="8,4" opacity="0.8" />
+                    <circle cx="30" cy="30" r="10" stroke-width="1.8" />
+                    <line x1="30" y1="4" x2="30" y2="16" stroke-width="2.5" />
+                    <line x1="30" y1="44" x2="30" y2="56" stroke-width="2.5" />
+                    <line x1="4" y1="30" x2="16" y2="30" stroke-width="2.5" />
+                    <line x1="44" y1="30" x2="56" y2="30" stroke-width="2.5" />
+                    <circle cx="30" cy="30" r="3.5" fill="#ff3366" stroke="none" />
                 </svg>
                 <span>AIM / FIRE</span>
             </div>
@@ -1213,6 +1215,7 @@
             initBgMusic();
             loadRifleModel();
             loadTicketGates();
+            createGlassFences();
             loadEscalators();
             setupLighting();
             setupInput();
@@ -1370,7 +1373,7 @@
 
         function loadTicketGates() {
             const loader = new THREE.GLTFLoader();
-            loader.load('model/3_ticket_gate.glb', (gltf) => {
+            loader.load('model/3_ticket_gates.glb', (gltf) => {
                 const baseGate = gltf.scene;
 
                 // Scale to realistic MTR station gate dimensions (~1.3m height, ~4.9m total width for 3 turnstiles)
@@ -1411,8 +1414,163 @@
                     colliders.push(box);
                 });
             }, undefined, (error) => {
-                console.error('Error loading 3_ticket_gate.glb:', error);
+                console.error('Error loading 3_ticket_gates.glb:', error);
             });
+        }
+
+        function createGlassFences() {
+            // Brushed stainless steel / chrome metal material
+            const metalMat = new THREE.MeshStandardMaterial({
+                color: 0xd2d2d2,
+                metalness: 0.88,
+                roughness: 0.22
+            });
+
+            // Transparent tempered safety glass panel
+            const glassMat = new THREE.MeshPhysicalMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.36,
+                roughness: 0.08,
+                metalness: 0.05,
+                transmission: 0.82,
+                ior: 1.5,
+                reflectivity: 0.6,
+                side: THREE.DoubleSide
+            });
+
+            // Single modular glass fence panel based on the reference photo
+            function createFenceModule(width, height) {
+                const group = new THREE.Group();
+                const r = 0.024; // 48mm diameter stainless steel tube
+                const cornerR = 0.12;
+                const halfW = width / 2 - r;
+                const topY = height - r;
+                const bottomBarY = 0.16;
+
+                // 1. Continuous Inverted U-shape Outer Tubular Frame with smooth curved top corners
+                const points = [new THREE.Vector3(-halfW, 0, 0)];
+                points.push(new THREE.Vector3(-halfW, topY - cornerR, 0));
+
+                const segments = 8;
+                // Top-left arc
+                for (let i = 1; i <= segments; i++) {
+                    const theta = Math.PI - (Math.PI / 2) * (i / segments);
+                    points.push(new THREE.Vector3(
+                        -halfW + cornerR + cornerR * Math.cos(theta),
+                        topY - cornerR + cornerR * Math.sin(theta),
+                        0
+                    ));
+                }
+                // Top-right arc
+                for (let i = 1; i <= segments; i++) {
+                    const theta = Math.PI / 2 - (Math.PI / 2) * (i / segments);
+                    points.push(new THREE.Vector3(
+                        halfW - cornerR + cornerR * Math.cos(theta),
+                        topY - cornerR + cornerR * Math.sin(theta),
+                        0
+                    ));
+                }
+                points.push(new THREE.Vector3(halfW, 0, 0));
+
+                const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
+                const tubeGeo = new THREE.TubeGeometry(curve, 32, r, 12, false);
+                const tubeMesh = new THREE.Mesh(tubeGeo, metalMat);
+                group.add(tubeMesh);
+
+                // 2. Lower Horizontal Crossbar
+                const innerW = 2 * halfW - 2 * r;
+                const crossbarGeo = new THREE.CylinderGeometry(r, r, innerW, 12);
+                crossbarGeo.rotateZ(Math.PI / 2);
+                const crossbar = new THREE.Mesh(crossbarGeo, metalMat);
+                crossbar.position.set(0, bottomBarY, 0);
+                group.add(crossbar);
+
+                // 3. Circular Floor Base Escutcheon Mounting Plates
+                const baseGeo = new THREE.CylinderGeometry(r * 1.5, r * 1.5, 0.018, 12);
+                const baseL = new THREE.Mesh(baseGeo, metalMat);
+                baseL.position.set(-halfW, 0.009, 0);
+                const baseR = new THREE.Mesh(baseGeo, metalMat);
+                baseR.position.set(halfW, 0.009, 0);
+                group.add(baseL, baseR);
+
+                // 4. Center Tempered Glass Panel
+                const glassClearance = 0.045;
+                const glassTop = topY - r - glassClearance;
+                const glassBottom = bottomBarY + r + glassClearance;
+                const glassHeight = glassTop - glassBottom;
+                const glassCenterY = (glassTop + glassBottom) / 2;
+                const glassWidth = (2 * halfW) - 2 * (r + glassClearance);
+
+                const glassGeo = new THREE.BoxGeometry(glassWidth, glassHeight, 0.012);
+                const glassMesh = new THREE.Mesh(glassGeo, glassMat);
+                glassMesh.position.set(0, glassCenterY, 0);
+                group.add(glassMesh);
+
+                // 5. Metal Glass Clamps (2 on each vertical post)
+                const clampGeo = new THREE.BoxGeometry(0.046, 0.038, 0.024);
+                const clampYOffsets = [glassCenterY - glassHeight * 0.28, glassCenterY + glassHeight * 0.28];
+                const clampXOffsets = [-halfW + r + glassClearance * 0.45, halfW - (r + glassClearance * 0.45)];
+
+                for (const cx of clampXOffsets) {
+                    for (const cy of clampYOffsets) {
+                        const clamp = new THREE.Mesh(clampGeo, metalMat);
+                        clamp.position.set(cx, cy, 0);
+                        group.add(clamp);
+                    }
+                }
+
+                return group;
+            }
+
+            // Function to generate a continuous line of fence modules
+            function createFenceRun(xPos, startZ, endZ, panelCount = 3) {
+                const totalLength = endZ - startZ;
+                const panelWidth = totalLength / panelCount;
+                const fenceHeight = 1.22; // 1.22m height matching ticket gates
+
+                const runGroup = new THREE.Group();
+
+                for (let i = 0; i < panelCount; i++) {
+                    const module = createFenceModule(panelWidth, fenceHeight);
+                    // Orient along Z corridor
+                    module.rotation.y = Math.PI / 2;
+                    const centerZ = startZ + panelWidth * (i + 0.5);
+                    module.position.set(xPos, 0, centerZ);
+                    runGroup.add(module);
+                }
+
+                scene.add(runGroup);
+
+                // Register with interactables for laser hits/decals and colliders for physics
+                runGroup.traverse((child) => {
+                    if (child.isMesh) {
+                        interactableMeshes.push(child);
+                    }
+                });
+
+                const runBox = new THREE.Box3().setFromObject(runGroup);
+                colliders.push(runBox);
+            }
+
+            // 1. Left fence run: connects from nearest left pillar (-8, 8) at z=8.6 to left ticket gate at z=13.35
+            createFenceRun(-8.15, 8.6, 13.35, 3);
+
+            // 2. Right fence run: connects from nearest right pillar (8, 8) at z=8.6 to right ticket gate at z=13.35
+            createFenceRun(8.15, 8.6, 13.35, 3);
+
+            // 3. Create other fences
+            // Left side
+            createFenceRun(-8.15, 18.3, 23.3, 3);
+            createFenceRun(-8.15, -23, -8.6, 9);
+            createFenceRun(-8.15, -7.0, 7.3, 9);
+            createFenceRun(-8.15, 24.6, 38.9, 9);
+
+            // Right side
+            createFenceRun(8.15, 18.3, 23.3, 3);
+            createFenceRun(8.15, -23, -8.6, 9);
+            createFenceRun(8.15, 7.0, 7.3, 9);
+            createFenceRun(8.15, 24.6, 38.9, 9);
         }
 
         function loadEscalators() {
@@ -2013,7 +2171,7 @@
                 }
 
                 const isMoving = (moveForward || moveBackward || moveLeft || moveRight) ||
-                                 (mobileJoystickInput.active && mobileJoystickInput.magnitude > 0.05);
+                    (mobileJoystickInput.active && mobileJoystickInput.magnitude > 0.05);
 
                 const isMobileRunning = mobileJoystickInput.active && mobileJoystickInput.magnitude > 0.85;
                 const targetSpeed = isMoving ? ((isRunning || isMobileRunning) ? RUN_SPEED : WALK_SPEED) : 0;
