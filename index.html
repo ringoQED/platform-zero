@@ -248,6 +248,11 @@
         let landingFlickerTimer = 0;
         let landingFlickerMode = 0;
 
+        // Glass Battery Pickup
+        let glassBatteryGroup = null;
+        let glassBatteryInner = null;
+        let glassBatteryLight = null;
+
         // Enemy HP removed from HUD per instructions
         window.updateEnemyHealthUI = function () { };
 
@@ -383,7 +388,7 @@
         const WALK_SPEED = 7.5;
         const RUN_SPEED = 14.5;
         const GRAVITY = 28.0;
-        const JUMP_VELOCITY = Math.sqrt(2 * GRAVITY * 0.8); // 0.8m height jump
+        const JUMP_VELOCITY = Math.sqrt(2 * GRAVITY * 1.6); // 1.6m height jump
         const PLAYER_HEIGHT = 1.6;
         const PLAYER_RADIUS = 0.45;
 
@@ -1131,6 +1136,31 @@
             }
         }
 
+        function playRechargeSound() {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!audioCtx) audioCtx = new AudioCtx();
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, now); // C5
+                osc.frequency.exponentialRampToValueAtTime(783.99, now + 0.12); // G5
+                osc.frequency.exponentialRampToValueAtTime(1046.50, now + 0.28); // C6
+                gain.gain.setValueAtTime(0.25, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.36);
+            } catch (e) {
+                console.warn('Audio error (recharge):', e);
+            }
+        }
+
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color('#08080c');
@@ -1217,6 +1247,7 @@
             loadTicketGates();
             createGlassFences();
             loadEscalators();
+            loadGlassBattery();
             setupLighting();
             setupInput();
             setupMobileControls();
@@ -1633,6 +1664,65 @@
             });
         }
 
+        function loadGlassBattery() {
+            const loader = new THREE.GLTFLoader();
+            loader.load('model/glass_battery.glb', (gltf) => {
+                const model = gltf.scene;
+
+                // Measure raw model bounds
+                const rawBox = new THREE.Box3().setFromObject(model);
+                const rawSize = new THREE.Vector3();
+                rawBox.getSize(rawSize);
+
+                // Scale so the battery stands realistically (~1.0m height)
+                const targetHeight = 1.0;
+                const scale = rawSize.y > 0 ? (targetHeight / rawSize.y) : 0.28;
+                model.scale.set(scale, scale, scale);
+
+                // Center X and Z, and place base of model at y = 0
+                const scaledBox = new THREE.Box3().setFromObject(model);
+                const scaledCenter = new THREE.Vector3();
+                scaledBox.getCenter(scaledCenter);
+
+                model.position.x = -scaledCenter.x;
+                model.position.y = -scaledBox.min.y; // Base rests flush on the station floor
+                model.position.z = -scaledCenter.z;
+
+                // Enhance materials: transparent glass shell and glowing energy core
+                model.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        if (child.material.name === 'eevee' || (child.name && child.name.toLowerCase().includes('eevee'))) {
+                            child.material.transparent = true;
+                            child.material.opacity = 0.35;
+                            child.material.roughness = 0.1;
+                            child.material.metalness = 0.1;
+                        } else {
+                            child.material.emissive = new THREE.Color(0x00ff88);
+                            child.material.emissiveIntensity = 0.8;
+                        }
+                    }
+                });
+
+                glassBatteryInner = new THREE.Group();
+                glassBatteryInner.add(model);
+
+                glassBatteryGroup = new THREE.Group();
+                // Position at the right hand side of the first right pillar near the entrance
+                // Entrance is at z = 49.5 (player walks in -Z direction). First right pillar is at (8, 2.1, 40).
+                // Pillar width is 2.6 (x: 6.7 to 9.3). Right-hand side is at x = 10.2, z = 40.0, resting on the floor (y = 0).
+                glassBatteryGroup.position.set(10.2, 0, 40.0);
+                glassBatteryGroup.add(glassBatteryInner);
+                scene.add(glassBatteryGroup);
+
+                // Subtle sci-fi green aura around the glass battery
+                glassBatteryLight = new THREE.PointLight(0x00ff88, 1.0, 3.5);
+                glassBatteryLight.position.set(10.2, 0.5, 40.0);
+                scene.add(glassBatteryLight);
+            }, undefined, (error) => {
+                console.error('Error loading glass_battery.glb:', error);
+            });
+        }
+
         function setupLighting() {
             scene.add(new THREE.AmbientLight(0xfff2e6, 0.05));
 
@@ -1974,9 +2064,9 @@
                 playerLaserTimer = 0.08; // 80ms laser beam pulse
             }
 
-            // Every 2 times shooting requires 1 sec to recharge the rifle
+            // Every 3 times shooting requires 1 sec to recharge the rifle
             shotsSinceRecharge++;
-            if (shotsSinceRecharge >= 2) {
+            if (shotsSinceRecharge >= 3) {
                 triggerRifleRecharge();
             }
 
@@ -2116,6 +2206,11 @@
 
             updateEnemy(delta, camera);
 
+            // Glass Battery subtle rotation
+            if (glassBatteryInner && glassBatteryGroup && glassBatteryGroup.parent) {
+                glassBatteryInner.rotation.y += delta * 1.2;
+            }
+
             // Update Time Passed (minutes:seconds since game starts, stops when player dies)
             if (window.gameStarted && !window.isDead && !isTimeStopped && gameStartTime) {
                 const elapsedSec = Math.floor((time - gameStartTime) / 1000);
@@ -2210,6 +2305,34 @@
                     velocity.y = 0;
                     camPos.y = targetCamY;
                     canJump = true;
+                }
+
+                // Check Glass Battery pickup contact
+                if (glassBatteryGroup && glassBatteryGroup.parent) {
+                    const distXZ = Math.hypot(camPos.x - glassBatteryGroup.position.x, camPos.z - glassBatteryGroup.position.z);
+                    const playerBox = new THREE.Box3().setFromCenterAndSize(
+                        new THREE.Vector3(camPos.x, camPos.y - (PLAYER_HEIGHT / 2), camPos.z),
+                        new THREE.Vector3(PLAYER_RADIUS * 2, PLAYER_HEIGHT, PLAYER_RADIUS * 2)
+                    );
+                    const batteryBox = new THREE.Box3().setFromObject(glassBatteryGroup);
+                    batteryBox.expandByScalar(0.25);
+
+                    const isContact = playerBox.intersectsBox(batteryBox) || (distXZ < 0.95 && Math.abs(camPos.y - PLAYER_HEIGHT) < 2.0);
+
+                    if (isContact) {
+                        if (laserEnergy < 100) {
+                            laserEnergy = Math.min(100, laserEnergy + 20);
+                            updateLaserEnergyUI();
+                            playRechargeSound();
+                            scene.remove(glassBatteryGroup);
+                            if (glassBatteryLight) {
+                                scene.remove(glassBatteryLight);
+                                glassBatteryLight = null;
+                            }
+                            glassBatteryGroup = null;
+                            glassBatteryInner = null;
+                        }
+                    }
                 }
 
                 // Weapon Sway & Walking Bobbing
