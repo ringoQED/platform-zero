@@ -253,6 +253,9 @@
         let glassBatteryInner = null;
         let glassBatteryLight = null;
 
+        // Medikit Pickups
+        const medikits = [];
+
         // Enemy HP removed from HUD per instructions
         window.updateEnemyHealthUI = function () { };
 
@@ -1161,6 +1164,31 @@
             }
         }
 
+        function playHealSound() {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!audioCtx) audioCtx = new AudioCtx();
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(440, now); // A4
+                osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.12); // E5
+                osc.frequency.exponentialRampToValueAtTime(880, now + 0.25); // A5
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(now);
+                osc.stop(now + 0.39);
+            } catch (e) {
+                console.warn('Audio error (heal):', e);
+            }
+        }
+
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color('#08080c');
@@ -1248,6 +1276,7 @@
             createGlassFences();
             loadEscalators();
             loadGlassBattery();
+            loadMedikits();
             setupLighting();
             setupInput();
             setupMobileControls();
@@ -1656,9 +1685,15 @@
                     }
                 });
 
-                // Add bounding box to colliders so player and enemies collide realistically
-                const finalBox = new THREE.Box3().setFromObject(escalatorGroup);
-                colliders.push(finalBox);
+                // Colliders for the two escalator flights:
+                // Solid lower bases block ground movement, while upper sections leave the underside walkable
+                // Escalator 1 (left side): low base at z > 0, high overhead at z < 0
+                colliders.push(new THREE.Box3(new THREE.Vector3(-1.6, 0.0, 0.0), new THREE.Vector3(-0.35, 2.5, 3.1)));
+                colliders.push(new THREE.Box3(new THREE.Vector3(-1.6, 1.8, -3.1), new THREE.Vector3(-0.35, 3.8, 0.0)));
+
+                // Escalator 2 (right side): low base at z < 0, high overhead at z > 0
+                colliders.push(new THREE.Box3(new THREE.Vector3(0.35, 0.0, -3.1), new THREE.Vector3(1.6, 2.5, 0.0)));
+                colliders.push(new THREE.Box3(new THREE.Vector3(0.35, 1.8, 0.0), new THREE.Vector3(1.6, 3.8, 3.1)));
             }, undefined, (error) => {
                 console.error('Error loading escalators.glb:', error);
             });
@@ -1674,9 +1709,9 @@
                 const rawSize = new THREE.Vector3();
                 rawBox.getSize(rawSize);
 
-                // Scale so the battery stands realistically (~1.0m height)
-                const targetHeight = 1.0;
-                const scale = rawSize.y > 0 ? (targetHeight / rawSize.y) : 0.28;
+                // Scale so the battery stands realistically (reduced by 50% from 1.0m to 0.5m height)
+                const targetHeight = 0.5;
+                const scale = rawSize.y > 0 ? (targetHeight / rawSize.y) : 0.14;
                 model.scale.set(scale, scale, scale);
 
                 // Center X and Z, and place base of model at y = 0
@@ -1715,11 +1750,82 @@
                 scene.add(glassBatteryGroup);
 
                 // Subtle sci-fi green aura around the glass battery
-                glassBatteryLight = new THREE.PointLight(0x00ff88, 1.0, 3.5);
-                glassBatteryLight.position.set(10.2, 0.5, 40.0);
+                glassBatteryLight = new THREE.PointLight(0x00ff88, 0.85, 2.8);
+                glassBatteryLight.position.set(10.2, 0.3, 40.0);
                 scene.add(glassBatteryLight);
             }, undefined, (error) => {
                 console.error('Error loading glass_battery.glb:', error);
+            });
+        }
+
+        function loadMedikits() {
+            const loader = new THREE.GLTFLoader();
+            loader.load('model/medkit.glb', (gltf) => {
+                const baseModel = gltf.scene;
+
+                // Measure raw model bounds
+                const rawBox = new THREE.Box3().setFromObject(baseModel);
+                const rawSize = new THREE.Vector3();
+                rawBox.getSize(rawSize);
+
+                // Size increased by 100% (doubled from 0.42m to 0.84m)
+                const maxDim = Math.max(rawSize.x, rawSize.y, rawSize.z);
+                const targetDim = 0.84;
+                const scale = maxDim > 0 ? (targetDim / maxDim) : 0.016;
+                baseModel.scale.set(scale, scale, scale);
+
+                // Center X and Z, and place base flush on floor at y = 0
+                const scaledBox = new THREE.Box3().setFromObject(baseModel);
+                const scaledCenter = new THREE.Vector3();
+                scaledBox.getCenter(scaledCenter);
+
+                baseModel.position.x = -scaledCenter.x;
+                baseModel.position.y = -scaledBox.min.y; // Base rests directly on the floor
+                baseModel.position.z = -scaledCenter.z;
+
+                baseModel.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        child.material.roughness = 0.4;
+                        child.material.metalness = 0.3;
+                    }
+                });
+
+                // 1. First medikit: near the ticket gate on the left-hand side of the entrance
+                // Entrance is at z = 49.5; left ticket gate is at x = -8.25, z = 15.8.
+                // Placed on the floor next to the left ticket gate
+                const pos1 = new THREE.Vector3(-6.6, 0.0, 16.5);
+                createMedkitPickup(baseModel, pos1);
+
+                // 2. Second medikit: identical one under the escalators
+                // Escalators are centered at (0, 0, 0)
+                const pos2 = new THREE.Vector3(0.0, 0.0, 0.0);
+                createMedkitPickup(baseModel, pos2);
+
+            }, undefined, (error) => {
+                console.error('Error loading medkit.glb:', error);
+            });
+        }
+
+        function createMedkitPickup(baseModel, position) {
+            const model = baseModel.clone(true);
+            const inner = new THREE.Group();
+            inner.add(model);
+
+            const group = new THREE.Group();
+            group.position.copy(position);
+            group.add(inner);
+            scene.add(group);
+
+            // Subtle medical emergency red glow point light
+            const light = new THREE.PointLight(0xff3344, 0.85, 3.0);
+            light.position.set(position.x, position.y + 0.35, position.z);
+            scene.add(light);
+
+            medikits.push({
+                group: group,
+                inner: inner,
+                light: light,
+                pos: position.clone()
             });
         }
 
@@ -2211,6 +2317,14 @@
                 glassBatteryInner.rotation.y += delta * 1.2;
             }
 
+            // Medikits subtle rotation
+            for (let i = 0; i < medikits.length; i++) {
+                const med = medikits[i];
+                if (med.inner && med.group && med.group.parent) {
+                    med.inner.rotation.y += delta * 1.2;
+                }
+            }
+
             // Update Time Passed (minutes:seconds since game starts, stops when player dies)
             if (window.gameStarted && !window.isDead && !isTimeStopped && gameStartTime) {
                 const elapsedSec = Math.floor((time - gameStartTime) / 1000);
@@ -2317,7 +2431,7 @@
                     const batteryBox = new THREE.Box3().setFromObject(glassBatteryGroup);
                     batteryBox.expandByScalar(0.25);
 
-                    const isContact = playerBox.intersectsBox(batteryBox) || (distXZ < 0.95 && Math.abs(camPos.y - PLAYER_HEIGHT) < 2.0);
+                    const isContact = playerBox.intersectsBox(batteryBox) || (distXZ < 0.75 && Math.abs(camPos.y - PLAYER_HEIGHT) < 2.0);
 
                     if (isContact) {
                         if (laserEnergy < 100) {
@@ -2331,6 +2445,36 @@
                             }
                             glassBatteryGroup = null;
                             glassBatteryInner = null;
+                        }
+                    }
+                }
+
+                // Check Medikit pickups contact / collision
+                for (let i = medikits.length - 1; i >= 0; i--) {
+                    const med = medikits[i];
+                    if (med.group && med.group.parent) {
+                        const distXZ = Math.hypot(camPos.x - med.pos.x, camPos.z - med.pos.z);
+                        const playerBox = new THREE.Box3().setFromCenterAndSize(
+                            new THREE.Vector3(camPos.x, camPos.y - (PLAYER_HEIGHT / 2), camPos.z),
+                            new THREE.Vector3(PLAYER_RADIUS * 2, PLAYER_HEIGHT, PLAYER_RADIUS * 2)
+                        );
+                        const medBox = new THREE.Box3().setFromObject(med.group);
+                        medBox.expandByScalar(0.25);
+
+                        const isColliding = playerBox.intersectsBox(medBox) || (distXZ < 1.05 && Math.abs(camPos.y - PLAYER_HEIGHT) < 2.0);
+
+                        if (isColliding) {
+                            if (window.playerHealth < 100) {
+                                window.playerHealth = Math.min(100, window.playerHealth + 20);
+                                updatePlayerHealthHUD();
+                                playHealSound();
+
+                                scene.remove(med.group);
+                                if (med.light) {
+                                    scene.remove(med.light);
+                                }
+                                medikits.splice(i, 1);
+                            }
                         }
                     }
                 }
