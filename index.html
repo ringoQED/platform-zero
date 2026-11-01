@@ -248,8 +248,9 @@
         let landingFlickerTimer = 0;
         let landingFlickerMode = 0;
 
-        // Glass Battery Pickup
-        let glassBatteryGroup = null;
+        // Glass Battery Pickups
+        const glassBatteries = [];
+        let glassBatteryGroup = null; // backward compatibility
         let glassBatteryInner = null;
         let glassBatteryLight = null;
 
@@ -414,6 +415,7 @@
         let gunSoundBuffer = null;
         let manHurtBuffer = null;
         let manDieBuffer = null;
+        let manSighBuffer = null;
 
         // Camera relative positioning for sci-fi rifle
         const weaponBasePosition = new THREE.Vector3(0.20, -0.22, -0.38);
@@ -579,7 +581,7 @@
         }
 
         function getGroundHeight(x, z) {
-            // Check if player is within the 3.0m wide stairwell corridor (-1.55 to 1.55)
+            // Check if player is within the entrance stairwell corridor (-1.55 to 1.55)
             if (Math.abs(x) <= 1.55) {
                 if (z >= 49.5 && z <= 57.5) {
                     // Ascending the staircase from ground (y = 0.0) to platform ceiling height (y = 4.2)
@@ -588,6 +590,26 @@
                     // Upper landing at platform ceiling height
                     return 4.2;
                 }
+            }
+            // Check if player is within the rear exit staircase (model/stairs.glb)
+            if (z <= -49.5 && z >= -54.0 && x >= -1.0 && x <= 2.5) {
+                // Lower flight entry floor (z from -49.5 to -50.8): subtle transition from y = 0.0 to 0.12m
+                if (z >= -50.8) {
+                    const t = Math.min(1.0, Math.max(0.0, (-49.5 - z) / 0.3));
+                    return t * 0.12;
+                }
+                // Lower flight steps (z from -50.8 to -51.85): ascending from y = 0.12m to y = 0.95m
+                if (z >= -51.85 && x <= 0.85) {
+                    const t = (-50.8 - z) / 1.05;
+                    return 0.12 + Math.min(1.0, Math.max(0.0, t)) * 0.83;
+                }
+                // Intermediate landing: flat floor at y = 0.95m
+                if (x < 0.85) {
+                    return 0.95;
+                }
+                // Upper flight turning right (+X): ascending from y = 0.95m to y = 2.10m
+                const tx = Math.min(1.0, Math.max(0.0, (x - 0.85) / 1.25));
+                return 0.95 + tx * 1.15;
             }
             return 0.0;
         }
@@ -791,13 +813,29 @@
             const darkMetalMat = new THREE.MeshLambertMaterial({ color: 0x22262d });
 
             // 1. Back Outer Wall Split (left and right of the 3.0m wide exit portal)
-            // Left segment: x from -50 to -1.5 (width = 48.5m, center = -25.75)
-            const leftBackWall = new THREE.Mesh(new THREE.PlaneGeometry(48.5, 4.2), backWallMat);
-            leftBackWall.position.set(-25.75, 2.1, 49.5);
-            leftBackWall.rotation.y = Math.PI;
-            scene.add(leftBackWall);
-            interactableMeshes.push(leftBackWall);
-            colliders.push(new THREE.Box3(new THREE.Vector3(-50, 0, 49.35), new THREE.Vector3(-1.5, 4.2, 49.65)));
+            // Left segment: x from -50 to -1.5, with an opening for the MTR Exit Lift at x in [-6.8, -5.2]
+            // Far left wall segment: x from -50 to -6.8 (width = 43.2m, center = -28.4)
+            const leftBackWallFar = new THREE.Mesh(new THREE.PlaneGeometry(43.2, 4.2), backWallMat);
+            leftBackWallFar.position.set(-28.4, 2.1, 49.5);
+            leftBackWallFar.rotation.y = Math.PI;
+            scene.add(leftBackWallFar);
+            interactableMeshes.push(leftBackWallFar);
+            colliders.push(new THREE.Box3(new THREE.Vector3(-50, 0, 49.35), new THREE.Vector3(-6.8, 4.2, 49.65)));
+
+            // Near left wall segment: x from -5.2 to -1.5 (width = 3.7m, center = -3.35)
+            const leftBackWallNear = new THREE.Mesh(new THREE.PlaneGeometry(3.7, 4.2), backWallMat);
+            leftBackWallNear.position.set(-3.35, 2.1, 49.5);
+            leftBackWallNear.rotation.y = Math.PI;
+            scene.add(leftBackWallNear);
+            interactableMeshes.push(leftBackWallNear);
+            colliders.push(new THREE.Box3(new THREE.Vector3(-5.2, 0, 49.35), new THREE.Vector3(-1.5, 4.2, 49.65)));
+
+            // Lintel wall patch above the Elevator: x from -6.8 to -5.2 (width = 1.6m, center = -6.0), y from 2.70 to 4.2 (height = 1.50m, center = 3.45)
+            const liftLintelWall = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.50), backWallMat);
+            liftLintelWall.position.set(-6.0, 3.45, 49.5);
+            liftLintelWall.rotation.y = Math.PI;
+            scene.add(liftLintelWall);
+            interactableMeshes.push(liftLintelWall);
 
             // Right segment: x from 1.5 to 50 (width = 48.5m, center = 25.75)
             const rightBackWall = new THREE.Mesh(new THREE.PlaneGeometry(48.5, 4.2), backWallMat);
@@ -1062,10 +1100,26 @@
                         manDieBuffer = buffer;
                     })
                     .catch(e => console.warn('Could not preload man_die.mp3:', e));
+
+                fetch('sound/man_sigh.mp3')
+                    .then(res => res.arrayBuffer())
+                    .then(arrayBuffer => {
+                        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                        if (!audioCtx) audioCtx = new AudioCtx();
+                        return audioCtx.decodeAudioData(arrayBuffer);
+                    })
+                    .then(buffer => {
+                        manSighBuffer = buffer;
+                    })
+                    .catch(e => console.warn('Could not preload man_sigh.mp3:', e));
             } catch (e) {
                 console.warn(e);
             }
         }
+
+        // 5 distinct male hurt sound pitches (calibrated to preserve masculine timbre, avoiding higher female frequencies)
+        const MAN_HURT_PITCHES = [0.82, 0.88, 0.94, 1.00, 1.06];
+        let lastHurtPitchIndex = -1;
 
         function playManHurtSound() {
             try {
@@ -1075,9 +1129,19 @@
                     audioCtx.resume();
                 }
 
+                // Randomly select one of the 5 masculine pitches (avoid immediate repetition when consecutive)
+                let pitchIndex = Math.floor(Math.random() * MAN_HURT_PITCHES.length);
+                if (pitchIndex === lastHurtPitchIndex && MAN_HURT_PITCHES.length > 1) {
+                    pitchIndex = (pitchIndex + 1 + Math.floor(Math.random() * (MAN_HURT_PITCHES.length - 1))) % MAN_HURT_PITCHES.length;
+                }
+                lastHurtPitchIndex = pitchIndex;
+                const chosenPitch = MAN_HURT_PITCHES[pitchIndex];
+
                 if (manHurtBuffer) {
                     const source = audioCtx.createBufferSource();
                     source.buffer = manHurtBuffer;
+                    source.playbackRate.setValueAtTime(chosenPitch, audioCtx.currentTime);
+
                     const gain = audioCtx.createGain();
                     gain.gain.value = 1.0;
                     source.connect(gain);
@@ -1085,11 +1149,15 @@
                     source.start(0);
                 } else {
                     const audio = new Audio('sound/man_hurt_1.mp3');
+                    audio.preservesPitch = false;
+                    audio.mozPreservesPitch = false;
+                    audio.webkitPreservesPitch = false;
+                    audio.playbackRate = chosenPitch;
                     audio.volume = 1.0;
                     audio.play().catch(() => { });
                 }
             } catch (e) {
-                console.warn('Audio error (man_hurt_1):', e);
+                console.warn('Audio error (man_hurt):', e);
             }
         }
 
@@ -1171,19 +1239,20 @@
                 if (audioCtx.state === 'suspended') {
                     audioCtx.resume();
                 }
-                const now = audioCtx.currentTime;
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(440, now); // A4
-                osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.12); // E5
-                osc.frequency.exponentialRampToValueAtTime(880, now + 0.25); // A5
-                gain.gain.setValueAtTime(0.2, now);
-                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.start(now);
-                osc.stop(now + 0.39);
+
+                if (manSighBuffer) {
+                    const source = audioCtx.createBufferSource();
+                    source.buffer = manSighBuffer;
+                    const gain = audioCtx.createGain();
+                    gain.gain.value = 1.0;
+                    source.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    source.start(0);
+                } else {
+                    const audio = new Audio('sound/man_sigh.mp3');
+                    audio.volume = 1.0;
+                    audio.play().catch(() => { });
+                }
             } catch (e) {
                 console.warn('Audio error (heal):', e);
             }
@@ -1277,6 +1346,9 @@
             loadEscalators();
             loadGlassBattery();
             loadMedikits();
+            loadFloorDebris();
+            loadElevator();
+            loadExitStairsModel();
             setupLighting();
             setupInput();
             setupMobileControls();
@@ -1354,12 +1426,43 @@
             interactableMeshes.push(rightWall);
             colliders.push(new THREE.Box3().setFromObject(rightWall));
 
-            // Front Outer Wall
-            const frontWall = new THREE.Mesh(new THREE.PlaneGeometry(100, 4.2), backWallMat);
-            frontWall.position.set(0, 2.1, -49.5);
-            scene.add(frontWall);
-            interactableMeshes.push(frontWall);
-            colliders.push(new THREE.Box3().setFromObject(frontWall));
+            // Rear Wall with Central Exit Stairs Doorway Portal (z = -49.5)
+            // Left wall segment: covers x from -50 to -0.78 (width = 49.22m, center = -25.39)
+            const rearWallLeft = new THREE.Mesh(new THREE.PlaneGeometry(49.22, 4.2), backWallMat);
+            rearWallLeft.position.set(-25.39, 2.1, -49.5);
+            scene.add(rearWallLeft);
+            interactableMeshes.push(rearWallLeft);
+            colliders.push(new THREE.Box3(new THREE.Vector3(-50, 0, -49.65), new THREE.Vector3(-0.78, 4.2, -49.35)));
+
+            // Right wall segment: covers x from 0.78 to 50 (width = 49.22m, center = 25.39)
+            const rearWallRight = new THREE.Mesh(new THREE.PlaneGeometry(49.22, 4.2), backWallMat);
+            rearWallRight.position.set(25.39, 2.1, -49.5);
+            scene.add(rearWallRight);
+            interactableMeshes.push(rearWallRight);
+            colliders.push(new THREE.Box3(new THREE.Vector3(0.78, 0, -49.65), new THREE.Vector3(50, 4.2, -49.35)));
+
+            // Lintel wall patch above Exit Doorway: covers x in [-0.78, 0.78] from y = 2.45 to 4.2 (height = 1.75m, center = 3.325)
+            const rearWallLintel = new THREE.Mesh(new THREE.PlaneGeometry(1.56, 1.75), backWallMat);
+            rearWallLintel.position.set(0.0, 3.325, -49.5);
+            scene.add(rearWallLintel);
+            interactableMeshes.push(rearWallLintel);
+
+            // Architectural Dark Portal Frame Trim around Exit Doorway (at z = -49.48)
+            const darkMetalMat = new THREE.MeshLambertMaterial({ color: 0x22262d });
+            const portalJambL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.50, 0.10), darkMetalMat);
+            portalJambL.position.set(-0.84, 1.25, -49.48);
+            scene.add(portalJambL);
+            interactableMeshes.push(portalJambL);
+
+            const portalJambR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.50, 0.10), darkMetalMat);
+            portalJambR.position.set(0.84, 1.25, -49.48);
+            scene.add(portalJambR);
+            interactableMeshes.push(portalJambR);
+
+            const portalLintel = new THREE.Mesh(new THREE.BoxGeometry(1.80, 0.12, 0.10), darkMetalMat);
+            portalLintel.position.set(0.0, 2.45, -49.48);
+            scene.add(portalLintel);
+            interactableMeshes.push(portalLintel);
 
             // Back Wall with 3.0m Wide Exit and Stairs to Platform Ceiling Height
             createBackExitStairs(scene, interactableMeshes, colliders);
@@ -1702,29 +1805,29 @@
         function loadGlassBattery() {
             const loader = new THREE.GLTFLoader();
             loader.load('model/glass_battery.glb', (gltf) => {
-                const model = gltf.scene;
+                const baseModel = gltf.scene;
 
                 // Measure raw model bounds
-                const rawBox = new THREE.Box3().setFromObject(model);
+                const rawBox = new THREE.Box3().setFromObject(baseModel);
                 const rawSize = new THREE.Vector3();
                 rawBox.getSize(rawSize);
 
-                // Scale so the battery stands realistically (reduced by 50% from 1.0m to 0.5m height)
+                // Scale so the battery stands realistically (0.5m height)
                 const targetHeight = 0.5;
                 const scale = rawSize.y > 0 ? (targetHeight / rawSize.y) : 0.14;
-                model.scale.set(scale, scale, scale);
+                baseModel.scale.set(scale, scale, scale);
 
-                // Center X and Z, and place base of model at y = 0
-                const scaledBox = new THREE.Box3().setFromObject(model);
+                // Center X and Z, and place base of model flush at y = 0
+                const scaledBox = new THREE.Box3().setFromObject(baseModel);
                 const scaledCenter = new THREE.Vector3();
                 scaledBox.getCenter(scaledCenter);
 
-                model.position.x = -scaledCenter.x;
-                model.position.y = -scaledBox.min.y; // Base rests flush on the station floor
-                model.position.z = -scaledCenter.z;
+                baseModel.position.x = -scaledCenter.x;
+                baseModel.position.y = -scaledBox.min.y; // Base rests flush on the station floor
+                baseModel.position.z = -scaledCenter.z;
 
                 // Enhance materials: transparent glass shell and glowing energy core
-                model.traverse((child) => {
+                baseModel.traverse((child) => {
                     if (child.isMesh && child.material) {
                         if (child.material.name === 'eevee' || (child.name && child.name.toLowerCase().includes('eevee'))) {
                             child.material.transparent = true;
@@ -1738,24 +1841,49 @@
                     }
                 });
 
-                glassBatteryInner = new THREE.Group();
-                glassBatteryInner.add(model);
-
-                glassBatteryGroup = new THREE.Group();
-                // Position at the right hand side of the first right pillar near the entrance
+                // 1. First Battery: right hand side of the first right pillar near the entrance
                 // Entrance is at z = 49.5 (player walks in -Z direction). First right pillar is at (8, 2.1, 40).
-                // Pillar width is 2.6 (x: 6.7 to 9.3). Right-hand side is at x = 10.2, z = 40.0, resting on the floor (y = 0).
-                glassBatteryGroup.position.set(10.2, 0, 40.0);
-                glassBatteryGroup.add(glassBatteryInner);
-                scene.add(glassBatteryGroup);
+                const pos1 = new THREE.Vector3(10.2, 0.0, 40.0);
+                createBatteryPickup(baseModel, pos1);
 
-                // Subtle sci-fi green aura around the glass battery
-                glassBatteryLight = new THREE.PointLight(0x00ff88, 0.85, 2.8);
-                glassBatteryLight.position.set(10.2, 0.3, 40.0);
-                scene.add(glassBatteryLight);
+                // 2. Second Battery: behind the 3rd pillar on the right-hand side (near center area)
+                // 3rd right pillar is at (8, 2.1, 8). Placed behind the pillar on the walkable corridor side.
+                const pos2 = new THREE.Vector3(7.5, 0.0, 6.8);
+                createBatteryPickup(baseModel, pos2);
+
             }, undefined, (error) => {
                 console.error('Error loading glass_battery.glb:', error);
             });
+        }
+
+        function createBatteryPickup(baseModel, position) {
+            const model = baseModel.clone(true);
+            const inner = new THREE.Group();
+            inner.add(model);
+
+            const group = new THREE.Group();
+            group.position.copy(position);
+            group.add(inner);
+            scene.add(group);
+
+            // Subtle sci-fi green aura around each glass battery
+            const light = new THREE.PointLight(0x00ff88, 0.85, 2.8);
+            light.position.set(position.x, position.y + 0.3, position.z);
+            scene.add(light);
+
+            glassBatteries.push({
+                group: group,
+                inner: inner,
+                light: light,
+                pos: position.clone()
+            });
+
+            // Set references for single-battery backward compatibility
+            if (!glassBatteryGroup) {
+                glassBatteryGroup = group;
+                glassBatteryInner = inner;
+                glassBatteryLight = light;
+            }
         }
 
         function loadMedikits() {
@@ -1826,6 +1954,344 @@
                 inner: inner,
                 light: light,
                 pos: position.clone()
+            });
+        }
+
+        function generateRandomFloorPositions(count = 16, minDist = 6.0) {
+            const pillars = [];
+            for (let x = -40; x <= 40; x += 16) {
+                for (let z = -40; z <= 40; z += 16) {
+                    pillars.push({ x, z });
+                }
+            }
+
+            function isPillarNear(x, z) {
+                for (const p of pillars) {
+                    // Pillar dimensions: width 2.6 (x: 1.3), depth 1.2 (z: 0.6)
+                    // Keep clear margin of 2.2m in X and 1.6m in Z from pillar center
+                    if (Math.abs(x - p.x) < 2.2 && Math.abs(z - p.z) < 1.6) return true;
+                }
+                return false;
+            }
+
+            function isObstacleNear(x, z) {
+                // Central escalators at (0, 0)
+                if (Math.abs(x) < 2.5 && Math.abs(z) < 4.5) return true;
+                // Ticket gates & glass fences along x = +-8.15
+                if ((Math.abs(x - 8.15) < 1.8 || Math.abs(x + 8.15) < 1.8) && (z > -25 && z < 42)) return true;
+                // Avoid glass battery locations near (10.2, 40) and (7.5, 6.8)
+                if (Math.hypot(x - 10.2, z - 40.0) < 3.0 || Math.hypot(x - 7.5, z - 6.8) < 3.0) return true;
+                // Avoid medikit locations near (-6.6, 16.5) and (0, 0)
+                if (Math.hypot(x - (-6.6), z - 16.5) < 3.0) return true;
+                // Entrance staircase corridor (z >= 44, |x| < 3.5)
+                if (Math.abs(x) < 3.5 && z > 44) return true;
+                // Avoid MTR Exit Lift area near x in [-8.5, -3.5], z >= 46.0
+                if (x > -8.5 && x < -3.5 && z > 46.0) return true;
+                // Avoid rear exit stairs area (z <= -46.0, |x| < 3.5)
+                if (Math.abs(x) < 3.5 && z < -46.0) return true;
+                return false;
+            }
+
+            const chosen = [];
+            let attempts = 0;
+            let currentMinDist = minDist;
+            while (chosen.length < count && attempts < 2500) {
+                attempts++;
+                // Random position across station floor bounds (-38 to 38 in X and Z)
+                const x = (Math.random() - 0.5) * 76;
+                const z = (Math.random() - 0.5) * 76;
+
+                if (isPillarNear(x, z)) continue;
+                if (isObstacleNear(x, z)) continue;
+
+                let ok = true;
+                for (const c of chosen) {
+                    if (Math.hypot(x - c.x, z - c.z) < currentMinDist) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok) {
+                    chosen.push(new THREE.Vector3(x, 0, z));
+                }
+                if (attempts > 500 && chosen.length < count) {
+                    currentMinDist = Math.max(3.0, currentMinDist * 0.95);
+                }
+            }
+
+            // Fallback positions if needed
+            const fallbacks = [
+                new THREE.Vector3(16.0, 0, -16.0),
+                new THREE.Vector3(-16.0, 0, 20.0),
+                new THREE.Vector3(32.0, 0, 16.0),
+                new THREE.Vector3(-32.0, 0, -16.0),
+                new THREE.Vector3(0.0, 0, -20.0),
+                new THREE.Vector3(20.0, 0, 0.0),
+                new THREE.Vector3(-20.0, 0, 0.0),
+                new THREE.Vector3(0.0, 0, 20.0),
+                new THREE.Vector3(16.0, 0, 32.0),
+                new THREE.Vector3(-16.0, 0, -32.0),
+                new THREE.Vector3(32.0, 0, -20.0),
+                new THREE.Vector3(-32.0, 0, 20.0),
+                new THREE.Vector3(28.0, 0, -32.0),
+                new THREE.Vector3(-28.0, 0, 32.0),
+                new THREE.Vector3(12.0, 0, -12.0),
+                new THREE.Vector3(-12.0, 0, 12.0)
+            ];
+            while (chosen.length < count) {
+                chosen.push(fallbacks[chosen.length]);
+            }
+
+            return chosen;
+        }
+
+        function loadFloorDebris() {
+            const debrisConfigs = [
+                { path: 'model/crumpled_paper.glb', targetDim: 0.45, count: 5, name: 'Crumpled Paper' },
+                { path: 'model/paper_box.glb', targetDim: 0.80, count: 5, name: 'Paper Box' },
+                { path: 'model/paper.glb', targetDim: 0.22, count: 5, name: 'Paper Sheet' },
+                { path: 'model/burger_box.glb', targetDim: 0.64, count: 5, name: 'Burger Box' }
+            ];
+
+            const totalCount = debrisConfigs.reduce((sum, cfg) => sum + cfg.count, 0);
+            const positions = generateRandomFloorPositions(totalCount, 6.0);
+
+            let currentOffset = 0;
+            const loader = new THREE.GLTFLoader();
+
+            debrisConfigs.forEach((cfg) => {
+                const configPositions = positions.slice(currentOffset, currentOffset + cfg.count);
+                currentOffset += cfg.count;
+
+                loader.load(cfg.path, (gltf) => {
+                    const baseModel = gltf.scene;
+
+                    // Measure raw model bounds
+                    const rawBox = new THREE.Box3().setFromObject(baseModel);
+                    const rawSize = new THREE.Vector3();
+                    rawBox.getSize(rawSize);
+
+                    // Scale to target dimension
+                    const maxDim = Math.max(rawSize.x, rawSize.y, rawSize.z);
+                    const scale = maxDim > 0 ? (cfg.targetDim / maxDim) : 1.0;
+                    baseModel.scale.set(scale, scale, scale);
+
+                    // Center model along X and Z, and place base flush on floor at y = 0
+                    const scaledBox = new THREE.Box3().setFromObject(baseModel);
+                    const scaledCenter = new THREE.Vector3();
+                    scaledBox.getCenter(scaledCenter);
+
+                    baseModel.position.x = -scaledCenter.x;
+                    baseModel.position.y = -scaledBox.min.y;
+                    baseModel.position.z = -scaledCenter.z;
+
+                    baseModel.traverse((child) => {
+                        if (child.isMesh && child.material) {
+                            child.material.side = THREE.DoubleSide;
+                        }
+                    });
+
+                    // Instantiate all required count instances across random floor positions
+                    configPositions.forEach((pos) => {
+                        const instance = baseModel.clone(true);
+                        instance.traverse((child) => {
+                            if (child.isMesh) {
+                                interactableMeshes.push(child);
+                            }
+                        });
+
+                        const group = new THREE.Group();
+                        group.position.set(pos.x, 0.0, pos.z);
+                        // Natural random rotation on the station floor
+                        group.rotation.y = Math.random() * Math.PI * 2;
+                        group.add(instance);
+                        scene.add(group);
+                    });
+                }, undefined, (error) => {
+                    console.error('Error loading ' + cfg.path + ':', error);
+                });
+            });
+        }
+
+        function loadElevator() {
+            const loader = new THREE.GLTFLoader();
+            loader.load('model/elevator.glb', (gltf) => {
+                const model = gltf.scene;
+
+                // Measure raw model bounds (model is authored in cm: height ~245.4cm)
+                const rawBox = new THREE.Box3().setFromObject(model);
+                const rawSize = new THREE.Vector3();
+                rawBox.getSize(rawSize);
+
+                // Adjust size realistically with respect to player size (PLAYER_HEIGHT = 1.6m)
+                // Passenger elevator entrance height is ~2.70m with ~2.10m clear door height
+                const targetHeight = 2.70;
+                const scale = rawSize.y > 0 ? (targetHeight / rawSize.y) : 0.011;
+                model.scale.set(scale, scale, scale);
+
+                // Rotate 180 degrees (Math.PI) so the elevator entrance faces inward into the station hall (-Z)
+                model.rotation.y = Math.PI;
+
+                // Center X at 0, place elevator floor flush on the station floor at y=0, and front frame at local z=0
+                const rotBox = new THREE.Box3().setFromObject(model);
+                const rotCenter = new THREE.Vector3();
+                rotBox.getCenter(rotCenter);
+
+                model.position.x = -rotCenter.x;
+                model.position.y = -rotBox.min.y; // Base rests flush on the station floor (y = 0)
+                model.position.z = -rotBox.min.z; // Front entrance frame aligns at local z = 0
+
+                // Enhance materials: bright interior light, indicator display glow, reflective mirror, and brushed metal
+                model.traverse((child) => {
+                    if (child.isMesh) {
+                        if (child.material) {
+                            child.material.side = THREE.DoubleSide;
+                            const matName = (child.material.name || '').toLowerCase();
+                            if (matName.includes('light')) {
+                                child.material.emissive = new THREE.Color(0xffffff);
+                                child.material.emissiveIntensity = 1.0;
+                            } else if (matName.includes('display')) {
+                                child.material.emissive = new THREE.Color(0xffaa33);
+                                child.material.emissiveIntensity = 0.7;
+                            } else if (matName.includes('mirror')) {
+                                child.material.metalness = 0.92;
+                                child.material.roughness = 0.08;
+                            } else if (matName.includes('metal')) {
+                                child.material.metalness = 0.65;
+                                child.material.roughness = 0.35;
+                            }
+                        }
+                        interactableMeshes.push(child);
+                    }
+                });
+
+                const liftGroup = new THREE.Group();
+                // Position on the front wall to the right of the entrance doorway when facing the wall (x = -6.0, z = 49.45)
+                liftGroup.position.set(-6.0, 0.0, 49.45);
+                liftGroup.add(model);
+                scene.add(liftGroup);
+
+                // Warm white interior ceiling point light illuminating the cab, mirror, and station floor in front
+                const liftLight = new THREE.PointLight(0xfff6ea, 1.35, 6.0);
+                liftLight.position.set(-6.0, 2.35, 50.4);
+                scene.add(liftLight);
+
+                // Solid colliders for the elevator cab walls (back wall, left wall, and right wall)
+                colliders.push(new THREE.Box3(new THREE.Vector3(-7.1, 0.0, 51.3), new THREE.Vector3(-4.9, 2.7, 51.7))); // Back wall with mirror & handrail
+                colliders.push(new THREE.Box3(new THREE.Vector3(-7.2, 0.0, 49.4), new THREE.Vector3(-6.7, 2.7, 51.5))); // Left cab wall
+                colliders.push(new THREE.Box3(new THREE.Vector3(-5.3, 0.0, 49.4), new THREE.Vector3(-4.8, 2.7, 51.5))); // Right cab wall
+            }, undefined, (error) => {
+                console.error('Error loading elevator.glb:', error);
+            });
+        }
+
+        function loadExitStairsModel() {
+            const loader = new THREE.GLTFLoader();
+            loader.load('model/stairs.glb', (gltf) => {
+                const model = gltf.scene;
+
+                // Measure raw model bounds
+                const rawBox = new THREE.Box3().setFromObject(model);
+                const rawSize = new THREE.Vector3();
+                rawBox.getSize(rawSize);
+
+                // Adjust size realistically with respect to player size (PLAYER_HEIGHT = 1.6m)
+                // Station ceiling height is 4.2m; scaling total stair elevation to 4.2m (16cm standard risers)
+                const targetHeight = 4.2;
+                const scale = rawSize.y > 0 ? (targetHeight / rawSize.y) : 1.067;
+                model.scale.set(scale, scale, scale);
+
+                // Micro yaw alignment correction (1.46 deg) to ensure stairs are perpendicular to the rear wall
+                model.rotation.y = (1.46 * Math.PI) / 180;
+
+                // Center doorway opening at local X=0, place base on floor at Y=0, and front threshold at local Z=0
+                model.position.x = 1.138 * scale;
+                model.position.y = 0.116 * scale;
+                model.position.z = -1.229 * scale;
+
+                model.traverse((child) => {
+                    if (child.isMesh) {
+                        if (child.material) {
+                            child.material.side = THREE.DoubleSide;
+                        }
+                        interactableMeshes.push(child);
+                    }
+                });
+
+                const stairsGroup = new THREE.Group();
+                // Position at the center of the rear wall (x = 0.0, z = -49.50)
+                stairsGroup.position.set(0.0, 0.0, -49.50);
+                stairsGroup.add(model);
+                scene.add(stairsGroup);
+
+                // Exterior Masking Casing Planes around the stairs model to completely cover outer scan geometry from all viewing angles
+                const casingMat = new THREE.MeshBasicMaterial({ color: 0x111315, side: THREE.DoubleSide });
+
+                // Left outer casing plane (x = -0.90, z from -49.50 to -53.50, y from 0 to 4.3)
+                const casingLeft = new THREE.Mesh(new THREE.PlaneGeometry(4.0, 4.3), casingMat);
+                casingLeft.position.set(-0.90, 2.15, -51.50);
+                casingLeft.rotation.y = Math.PI / 2;
+                scene.add(casingLeft);
+
+                // Right lower outer casing plane (x = 0.88, z from -49.50 to -51.70, y from 0 to 4.3)
+                const casingRightLow = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 4.3), casingMat);
+                casingRightLow.position.set(0.88, 2.15, -50.60);
+                casingRightLow.rotation.y = -Math.PI / 2;
+                scene.add(casingRightLow);
+
+                // Right corner connector plane (z = -51.65, x from 0.88 to 2.30, y from 0 to 4.3)
+                const casingCorner = new THREE.Mesh(new THREE.PlaneGeometry(1.42, 4.3), casingMat);
+                casingCorner.position.set(1.59, 2.15, -51.65);
+                scene.add(casingCorner);
+
+                // Right upper outer casing plane (x = 2.30, z from -51.65 to -53.50, y from 0 to 4.3)
+                const casingRightHigh = new THREE.Mesh(new THREE.PlaneGeometry(1.85, 4.3), casingMat);
+                casingRightHigh.position.set(2.30, 2.15, -52.575);
+                casingRightHigh.rotation.y = -Math.PI / 2;
+                scene.add(casingRightHigh);
+
+                // Rear back outer casing plane (z = -53.50, x from -0.90 to 2.30, y from 0 to 4.3)
+                const casingBack = new THREE.Mesh(new THREE.PlaneGeometry(3.20, 4.3), casingMat);
+                casingBack.position.set(0.70, 2.15, -53.50);
+                scene.add(casingBack);
+
+                // Roof outer casing plane (y = 4.25, x from -0.90 to 2.30, z from -49.50 to -53.50)
+                const casingRoof = new THREE.Mesh(new THREE.PlaneGeometry(3.20, 4.0), casingMat);
+                casingRoof.position.set(0.70, 4.25, -51.50);
+                casingRoof.rotation.x = Math.PI / 2;
+                scene.add(casingRoof);
+
+                // Suspended "WAY OUT 出口 ↑" illuminated exit sign above the rear exit doorway
+                const exitSignTex = createExitSignTexture("WAY OUT  出口 ↑");
+                const signGeo = new THREE.BoxGeometry(1.8, 0.45, 0.08);
+                const signMatFront = new THREE.MeshBasicMaterial({ map: exitSignTex });
+                const signMatBack = new THREE.MeshBasicMaterial({ color: 0x111315 });
+                const signMaterials = [signMatBack, signMatBack, signMatBack, signMatBack, signMatFront, signMatBack];
+                const exitSign = new THREE.Mesh(signGeo, signMaterials);
+                exitSign.position.set(0.0, 3.65, -49.38);
+                scene.add(exitSign);
+                interactableMeshes.push(exitSign);
+
+                // Atmospheric green exit light and stairwell illumination
+                const exitLight = new THREE.PointLight(0x00e676, 0.9, 6.0);
+                exitLight.position.set(0.0, 3.65, -49.1);
+                scene.add(exitLight);
+
+                const stairMidLight = new THREE.PointLight(0xfff6ea, 1.1, 7.0);
+                stairMidLight.position.set(0.0, 2.6, -51.5);
+                scene.add(stairMidLight);
+
+                // Solid colliders in the interior of the model so player cannot walk through the boundaries:
+                // 1. Left stairwell wall (continuous from entrance z = -49.4 to landing z = -53.6 at x = -0.85)
+                colliders.push(new THREE.Box3(new THREE.Vector3(-2.0, 0.0, -53.6), new THREE.Vector3(-0.85, 4.5, -49.4)));
+                // 2. Right stairwell lower flight wall (from entrance z = -49.4 to landing z = -51.7 at x = 0.85)
+                colliders.push(new THREE.Box3(new THREE.Vector3(0.85, 0.0, -51.7), new THREE.Vector3(3.0, 4.5, -49.4)));
+                // 3. Landing end wall straight ahead (at z = -53.35 to -54.0)
+                colliders.push(new THREE.Box3(new THREE.Vector3(-2.0, 0.0, -54.0), new THREE.Vector3(3.0, 4.5, -53.35)));
+                // 4. Upper flight end barrier (at x = 2.25 to 3.5, z from -53.5 to -51.5)
+                colliders.push(new THREE.Box3(new THREE.Vector3(2.25, 0.0, -53.5), new THREE.Vector3(3.5, 4.5, -51.5)));
+            }, undefined, (error) => {
+                console.error('Error loading stairs.glb:', error);
             });
         }
 
@@ -2312,19 +2778,6 @@
 
             updateEnemy(delta, camera);
 
-            // Glass Battery subtle rotation
-            if (glassBatteryInner && glassBatteryGroup && glassBatteryGroup.parent) {
-                glassBatteryInner.rotation.y += delta * 1.2;
-            }
-
-            // Medikits subtle rotation
-            for (let i = 0; i < medikits.length; i++) {
-                const med = medikits[i];
-                if (med.inner && med.group && med.group.parent) {
-                    med.inner.rotation.y += delta * 1.2;
-                }
-            }
-
             // Update Time Passed (minutes:seconds since game starts, stops when player dies)
             if (window.gameStarted && !window.isDead && !isTimeStopped && gameStartTime) {
                 const elapsedSec = Math.floor((time - gameStartTime) / 1000);
@@ -2421,30 +2874,31 @@
                     canJump = true;
                 }
 
-                // Check Glass Battery pickup contact
-                if (glassBatteryGroup && glassBatteryGroup.parent) {
-                    const distXZ = Math.hypot(camPos.x - glassBatteryGroup.position.x, camPos.z - glassBatteryGroup.position.z);
-                    const playerBox = new THREE.Box3().setFromCenterAndSize(
-                        new THREE.Vector3(camPos.x, camPos.y - (PLAYER_HEIGHT / 2), camPos.z),
-                        new THREE.Vector3(PLAYER_RADIUS * 2, PLAYER_HEIGHT, PLAYER_RADIUS * 2)
-                    );
-                    const batteryBox = new THREE.Box3().setFromObject(glassBatteryGroup);
-                    batteryBox.expandByScalar(0.25);
+                // Check Glass Battery pickups contact
+                for (let i = glassBatteries.length - 1; i >= 0; i--) {
+                    const bat = glassBatteries[i];
+                    if (bat.group && bat.group.parent) {
+                        const distXZ = Math.hypot(camPos.x - bat.pos.x, camPos.z - bat.pos.z);
+                        const playerBox = new THREE.Box3().setFromCenterAndSize(
+                            new THREE.Vector3(camPos.x, camPos.y - (PLAYER_HEIGHT / 2), camPos.z),
+                            new THREE.Vector3(PLAYER_RADIUS * 2, PLAYER_HEIGHT, PLAYER_RADIUS * 2)
+                        );
+                        const batteryBox = new THREE.Box3().setFromObject(bat.group);
+                        batteryBox.expandByScalar(0.25);
 
-                    const isContact = playerBox.intersectsBox(batteryBox) || (distXZ < 0.75 && Math.abs(camPos.y - PLAYER_HEIGHT) < 2.0);
+                        const isContact = playerBox.intersectsBox(batteryBox) || (distXZ < 0.75 && Math.abs(camPos.y - PLAYER_HEIGHT) < 2.0);
 
-                    if (isContact) {
-                        if (laserEnergy < 100) {
-                            laserEnergy = Math.min(100, laserEnergy + 20);
-                            updateLaserEnergyUI();
-                            playRechargeSound();
-                            scene.remove(glassBatteryGroup);
-                            if (glassBatteryLight) {
-                                scene.remove(glassBatteryLight);
-                                glassBatteryLight = null;
+                        if (isContact) {
+                            if (laserEnergy < 100) {
+                                laserEnergy = Math.min(100, laserEnergy + 20);
+                                updateLaserEnergyUI();
+                                playRechargeSound();
+                                scene.remove(bat.group);
+                                if (bat.light) {
+                                    scene.remove(bat.light);
+                                }
+                                glassBatteries.splice(i, 1);
                             }
-                            glassBatteryGroup = null;
-                            glassBatteryInner = null;
                         }
                     }
                 }
