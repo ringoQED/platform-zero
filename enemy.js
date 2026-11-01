@@ -10,6 +10,13 @@ class SingleEnemy {
         this.speed = 3.0; // 3m per second
         this.radius = 0.5; // ~1m diameter sphere collider
 
+        // Zig-zag motion along z-axis parameters (1 cycle in 1s, movement degree < 2x width)
+        this.zigzagAmplitude = 0.7; // Peak-to-peak stroke = 1.4m (< 2.0m)
+        this.zigzagPeriod = 2.0; // 1 second per cycle
+        this.zigzagPhase = (id * 0.2) % 1.0; // Staggered initial phase between individual enemies
+        this.idleAnchor = null;
+        this.idleTime = 0;
+
         // Position crystal
         if (this.crystal) {
             this.crystal.position.copy(initialPos);
@@ -78,7 +85,7 @@ class SingleEnemy {
         const obstacles = [];
         if (this.scene) {
             this.scene.traverse((child) => {
-                if (child.isMesh && child !== this.laserBeam && child !== this.laserImpact && 
+                if (child.isMesh && child !== this.laserBeam && child !== this.laserImpact &&
                     (!this.crystal || !this.crystal.getObjectById(child.id))) {
                     obstacles.push(child);
                 }
@@ -190,10 +197,11 @@ class SingleEnemy {
 
     // Check collision with the player first person controller
     checkPlayerCollision(testPos, camera) {
+        if (!camera || !camera.position) return false;
         const PLAYER_RADIUS = 0.45;
         const ENEMY_RADIUS = this.radius;
         const minDistXZ = PLAYER_RADIUS + ENEMY_RADIUS; // 0.95m
-        
+
         // If bottom of enemy is at or above player's head, it can freely fly over him
         if (testPos.y - ENEMY_RADIUS >= camera.position.y) {
             return false;
@@ -393,6 +401,11 @@ class SingleEnemy {
 
         // Play explosion sound
         this.playExplosionSound();
+
+        // Update Kills HUD
+        if (window.enemyManager && typeof window.enemyManager.updateKillsUI === 'function') {
+            window.enemyManager.updateKillsUI();
+        }
     }
 
     spawnExplosion(pos) {
@@ -429,7 +442,7 @@ class SingleEnemy {
         // 3. Yellowish Fire Particles (60 particles)
         const fireColors = [0xfff24f, 0xffea00, 0xffd000, 0xffb703, 0xffa000, 0xff8c00];
         for (let i = 0; i < 100; i++) {
-            const fireGeo = (i % 2 === 0) 
+            const fireGeo = (i % 2 === 0)
                 //? new THREE.DodecahedronGeometry(0.12 + Math.random() * 0.12)
                 ? new THREE.DodecahedronGeometry(0.1, 1)
                 //: new THREE.TetrahedronGeometry(0.14 + Math.random() * 0.14);
@@ -442,7 +455,7 @@ class SingleEnemy {
                 depthWrite: false
             });
             const mesh = new THREE.Mesh(fireGeo, fireMat);
-            
+
             // Spawn around center
             mesh.position.set(
                 pos.x + (Math.random() - 0.5) * 0.3,
@@ -661,6 +674,21 @@ class SingleEnemy {
         }
     }
 
+    getZigzagOffset(time) {
+        const period = this.zigzagPeriod || 1.0;
+        const amplitude = this.zigzagAmplitude || 0.7; // Degree of movement = 1.4m (< 2.0m, less than 2x width)
+        const phase = (((time / period) + this.zigzagPhase) % 1.0 + 1.0) % 1.0;
+        let wave;
+        if (phase < 0.25) {
+            wave = 4 * phase; // 0 to 1
+        } else if (phase < 0.75) {
+            wave = 2 - 4 * phase; // 1 to -1
+        } else {
+            wave = 4 * phase - 4; // -1 to 0
+        }
+        return wave * amplitude;
+    }
+
     update(delta, camera, otherEnemies) {
         // Always update explosion effects and particles
         this.updateExplosion(delta);
@@ -673,59 +701,47 @@ class SingleEnemy {
         // Continuous rotation effect
         this.crystal.rotation.y += delta * 1.5;
 
-        if (camera && !window.isDead && window.gameStarted) {
-            const seesPlayer = this.canSeePlayer(camera);
+        const isPlayerActive = camera && !window.isDead && window.gameStarted;
+        const seesPlayer = isPlayerActive && this.canSeePlayer(camera);
+
+        if (seesPlayer) {
+            // Chasing player state
+            this.idleAnchor = null;
+
+            const target = camera.position.clone();
+            const flyDir = target.sub(this.crystal.position);
+            const flyDist = flyDir.length();
+
+            const moveVec = new THREE.Vector3(0, 0, 0);
+            if (flyDist > 0.05) {
+                flyDir.normalize();
+                const moveDist = Math.min(this.speed * delta, flyDist);
+                moveVec.add(flyDir.multiplyScalar(moveDist));
+            }
+
+            // Zig-zag motion along z-axis during chase (1 cycle in 1 sec, degree < 2x width)
+            const deltaZZ = this.getZigzagOffset(this.time) - this.getZigzagOffset(this.time - delta);
+            moveVec.z += deltaZZ;
+
+            this.moveWithCollision(moveVec, camera, otherEnemies);
+
             const distToPlayer = this.crystal.position.distanceTo(camera.position);
 
-            if (seesPlayer) {
-                // Chase player at 5m/s towards player's position
-                const target = camera.position.clone();
-                const flyDir = target.sub(this.crystal.position);
-                const flyDist = flyDir.length();
+            // Laser attack handling when in range and seeing player
+            if (this.laserCooldown > 0) {
+                this.laserCooldown -= delta;
+            }
 
-                if (flyDist > 0.05) {
-                    flyDir.normalize();
-                    const moveDist = Math.min(this.speed * delta, flyDist);
-                    const moveVec = flyDir.multiplyScalar(moveDist);
-                    this.moveWithCollision(moveVec, camera, otherEnemies);
-                }
-
-                // Laser attack handling when in range and seeing player
-                if (this.laserCooldown > 0) {
-                    this.laserCooldown -= delta;
-                }
-
-                if (this.laserActiveTime > 0) {
-                    this.laserActiveTime -= delta;
-                    if (this.laserActiveTime <= 0) {
-                        this.laserBeam.visible = false;
-                        this.laserImpact.visible = false;
-                    } else {
-                        const hitInfo = this.checkLaserHit(camera);
-                        if (hitInfo) {
-                            this.updateLaserVisuals(hitInfo);
-                            if (!this.hasDamagedThisShot && !hitInfo.isBlocked) {
-                                if (window.damagePlayer) {
-                                    window.damagePlayer(10);
-                                }
-                                this.hasDamagedThisShot = true;
-                            }
-                        }
-                    }
-                }
-
-                // If close enough (within 30m) and laser cooldown ready
-                if (distToPlayer <= 30 && this.laserCooldown <= 0) {
-                    this.laserCooldown = 3.0; // previous value = 1.5
-                    this.laserActiveTime = 0.3;
-                    this.hasDamagedThisShot = false;
-
-                    this.playLaserSound();
-
+            if (this.laserActiveTime > 0) {
+                this.laserActiveTime -= delta;
+                if (this.laserActiveTime <= 0) {
+                    this.laserBeam.visible = false;
+                    this.laserImpact.visible = false;
+                } else {
                     const hitInfo = this.checkLaserHit(camera);
                     if (hitInfo) {
                         this.updateLaserVisuals(hitInfo);
-                        if (!hitInfo.isBlocked) {
+                        if (!this.hasDamagedThisShot && !hitInfo.isBlocked) {
                             if (window.damagePlayer) {
                                 window.damagePlayer(10);
                             }
@@ -733,18 +749,47 @@ class SingleEnemy {
                         }
                     }
                 }
-            } else {
-                // Cannot see player (pillar in between): stop chasing and stop laser
-                this.laserBeam.visible = false;
-                this.laserImpact.visible = false;
+            }
 
-                // Idle floating bob when stationary
-                this.crystal.position.y += Math.sin(this.time * 2) * 0.002;
-                this.crystal.position.y = Math.max(this.radius, Math.min(4.2 - this.radius, this.crystal.position.y));
+            // If close enough (within 30m) and laser cooldown ready
+            if (distToPlayer <= 30 && this.laserCooldown <= 0) {
+                this.laserCooldown = 3.0; // previous value = 1.5
+                this.laserActiveTime = 0.3;
+                this.hasDamagedThisShot = false;
+
+                this.playLaserSound();
+
+                const hitInfo = this.checkLaserHit(camera);
+                if (hitInfo) {
+                    this.updateLaserVisuals(hitInfo);
+                    if (!hitInfo.isBlocked) {
+                        if (window.damagePlayer) {
+                            window.damagePlayer(10);
+                        }
+                        this.hasDamagedThisShot = true;
+                    }
+                }
             }
         } else {
+            // Idle state: cannot see player (pillar in between), before game started, or player is dead
             this.laserBeam.visible = false;
             this.laserImpact.visible = false;
+
+            if (!this.idleAnchor) {
+                this.idleAnchor = this.crystal.position.clone();
+                this.idleTime = 0;
+            }
+            this.idleTime += delta;
+
+            // Idle floating bob on Y
+            const bobY = Math.sin(this.time * 2) * 0.002;
+
+            // Zig-zag motion along z-axis when idle around idle anchor (1 cycle in 1 sec, degree < 2x width)
+            const targetZ = this.idleAnchor.z + this.getZigzagOffset(this.idleTime);
+            const moveZ = targetZ - this.crystal.position.z;
+
+            const moveVec = new THREE.Vector3(0, bobY, moveZ);
+            this.moveWithCollision(moveVec, camera, otherEnemies);
         }
     }
 }
@@ -874,6 +919,7 @@ class EnemyManager {
                 this.enemies.push(clonedEnemy);
                 console.log(`Cloned Enemy #${i + 2} spawned at (${randomPos.x.toFixed(1)}, ${randomPos.y.toFixed(1)}, ${randomPos.z.toFixed(1)})`);
             }
+            this.updateKillsUI();
 
             if (window.updateEnemyHealthUI) {
                 window.updateEnemyHealthUI(100, 100);
@@ -881,6 +927,15 @@ class EnemyManager {
         }, undefined, (error) => {
             console.error('An error happened loading the crystal enemy:', error);
         });
+    }
+
+    // Update kills counter on HUD: "Kills : { killed } | { total }"
+    updateKillsUI() {
+        const total = this.enemies.length;
+        const killed = this.enemies.filter(e => e.isDead).length;
+        if (window.updateEnemyKillsHUD) {
+            window.updateEnemyKillsHUD(killed, total);
+        }
     }
 
     // Get all alive enemy crystal roots for raycasting
